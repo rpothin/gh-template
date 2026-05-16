@@ -14,22 +14,23 @@ type RepoInfo struct {
 	Owner    struct {
 		Login string `json:"login"`
 	} `json:"owner"`
-	Description                string `json:"description"`
-	Private                    bool   `json:"private"`
-	Visibility                 string `json:"visibility"`
-	HTMLURL                    string `json:"html_url"`
-	HasIssues                  bool   `json:"has_issues"`
-	HasProjects                bool   `json:"has_projects"`
-	HasWiki                    bool   `json:"has_wiki"`
-	HasDiscussions             bool   `json:"has_discussions"`
-	HasPullRequests            bool   `json:"has_pull_requests"`
-	PullRequestCreationPolicy  string `json:"pull_request_creation_policy"`
-	AllowSquashMerge           bool   `json:"allow_squash_merge"`
-	AllowMergeCommit           bool   `json:"allow_merge_commit"`
-	AllowRebaseMerge           bool   `json:"allow_rebase_merge"`
-	AllowAutoMerge             bool   `json:"allow_auto_merge"`
-	DeleteBranchOnMerge        bool   `json:"delete_branch_on_merge"`
-	AllowUpdateBranch          bool   `json:"allow_update_branch"`
+	Description                string           `json:"description"`
+	Private                    bool             `json:"private"`
+	Visibility                 string           `json:"visibility"`
+	HTMLURL                    string           `json:"html_url"`
+	HasIssues                  bool             `json:"has_issues"`
+	HasProjects                bool             `json:"has_projects"`
+	HasWiki                    bool             `json:"has_wiki"`
+	HasDiscussions             bool             `json:"has_discussions"`
+	HasPullRequests            bool             `json:"has_pull_requests"`
+	PullRequestCreationPolicy  string           `json:"pull_request_creation_policy"`
+	AllowSquashMerge           bool             `json:"allow_squash_merge"`
+	AllowMergeCommit           bool             `json:"allow_merge_commit"`
+	AllowRebaseMerge           bool             `json:"allow_rebase_merge"`
+	AllowAutoMerge             bool             `json:"allow_auto_merge"`
+	DeleteBranchOnMerge        bool             `json:"delete_branch_on_merge"`
+	AllowUpdateBranch          bool             `json:"allow_update_branch"`
+	SecurityAndAnalysis        *SecurityAnalysis `json:"security_and_analysis"`
 }
 
 // GetRepository fetches repository metadata from the GitHub API.

@@ -7,6 +7,10 @@ const (
 	SectionSettings     Section = "settings"
 	SectionEnvironments Section = "environments"
 	SectionTopics       Section = "topics"
+	SectionActions      Section = "actions"
+	SectionSecurity     Section = "security"
+	SectionVariables    Section = "variables"
+	SectionSecrets      Section = "secrets"
 )
 
 // FieldDef describes a single manifest field for display purposes.
@@ -293,6 +297,151 @@ var Fields = []FieldDef{
 			"⚠ Always update secret values manually after repository creation.",
 		DocsURL: "https://docs.github.com/en/actions/deployment/targeting-different-environments/using-environments-for-deployment#environment-secrets",
 		Example: "environments:\n  - name: production\n    secrets:\n      - name: API_KEY\n        value: \"PLACEHOLDER\"  # replace after creation",
+	},
+	// ── Actions ───────────────────────────────────────────────────────────
+	{
+		Name:    "sha_pinning_required",
+		Section: SectionActions,
+		Type:    "bool",
+		Short:   "Require Actions to reference a full-length commit SHA",
+		Long: "In the GitHub UI: Settings → Actions → General → Actions permissions\n" +
+			"  → Require actions to have a full-length commit SHA pinned.\n\n" +
+			"When true, all actions and reusable workflows used in this repository\n" +
+			"must reference a full 40-character commit SHA rather than a mutable\n" +
+			"tag or branch. This prevents supply-chain attacks where a tag is moved\n" +
+			"to a different (malicious) commit after it was reviewed.",
+		DocsURL: "https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-github-actions-settings-for-a-repository",
+		Example: "actions:\n  sha_pinning_required: true",
+	},
+	{
+		Name:    "can_approve_pull_request_reviews",
+		Section: SectionActions,
+		Type:    "bool",
+		Short:   "Allow GitHub Actions to create and approve pull requests",
+		Long: "In the GitHub UI: Settings → Actions → General → Workflow permissions\n" +
+			"  → Allow GitHub Actions to create and approve pull requests.\n\n" +
+			"When true, the GITHUB_TOKEN can be used by workflows to both open pull\n" +
+			"requests and approve them — effectively allowing an automated workflow to\n" +
+			"satisfy a required-review check.\n\n" +
+			"This setting should be false for most repositories to prevent automated\n" +
+			"workflows from bypassing mandatory human review.",
+		DocsURL: "https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-github-actions-settings-for-a-repository#preventing-github-actions-from-creating-or-approving-pull-requests",
+		Example: "actions:\n  can_approve_pull_request_reviews: false",
+	},
+	{
+		Name:    "default_workflow_permissions",
+		Section: SectionActions,
+		Type:    "string",
+		Short:   `Default GITHUB_TOKEN permissions: "read" | "write"`,
+		Long: "In the GitHub UI: Settings → Actions → General → Workflow permissions.\n\n" +
+			"Controls the default level of access granted to the GITHUB_TOKEN in\n" +
+			"workflows that do not explicitly request elevated permissions:\n" +
+			"  read  — token can read repository contents and metadata (recommended)\n" +
+			"  write — token has write access to all repository scopes (less secure)\n\n" +
+			"Individual workflows can still override this with the `permissions:` key\n" +
+			"regardless of the repository default.",
+		DocsURL: "https://docs.github.com/en/actions/security-guides/automatic-token-authentication#modifying-the-permissions-for-the-github_token",
+		Example: "actions:\n  default_workflow_permissions: read",
+	},
+	// ── Repository Variables ──────────────────────────────────────────────
+	{
+		Name:    "variable",
+		Section: SectionVariables,
+		Type:    "object",
+		Short:   "Repository-level Actions variable available to all workflows",
+		Long: "In the GitHub UI: Settings → Secrets and variables → Actions → Variables tab.\n\n" +
+			"Repository variables are plaintext name/value pairs injected as environment\n" +
+			"variables into all Actions workflow jobs in this repository. Unlike secrets,\n" +
+			"variable values are readable and visible in logs.\n\n" +
+			"Use variables for non-sensitive configuration shared across workflows (e.g.\n" +
+			"deployment URLs, feature flag names). Use secrets for tokens and credentials.\n\n" +
+			"At sync time, existing variables are updated; new ones are created.\n" +
+			"Variables not in the manifest are left untouched.",
+		DocsURL: "https://docs.github.com/en/actions/writing-workflows/choosing-what-your-workflow-does/store-information-in-variables#creating-configuration-variables-for-a-repository",
+		Example: "variables:\n  - name: DEPLOY_URL\n    value: https://example.com",
+	},
+	// ── Repository Secrets ────────────────────────────────────────────────
+	{
+		Name:    "secret",
+		Section: SectionSecrets,
+		Type:    "object",
+		Short:   "Repository-level Actions secret (placeholder value in manifest)",
+		Long: "In the GitHub UI: Settings → Secrets and variables → Actions → Secrets tab.\n\n" +
+			"Repository secrets are encrypted values available as environment variables\n" +
+			"to all Actions workflow jobs in this repository. Secret values are write-only\n" +
+			"in the GitHub API — they can never be read back once set.\n\n" +
+			"Because GitHub never returns secret values, the manifest always stores\n" +
+			"value: \"PLACEHOLDER\" — this is NOT the real secret.\n\n" +
+			"Behaviour by command:\n" +
+			"  snapshot — captures secret names only; value is always \"PLACEHOLDER\"\n" +
+			"  create   — initializes each missing secret with the literal string\n" +
+			"             \"PLACEHOLDER\" so the secret exists; prints a warning per secret\n" +
+			"  sync     — same as create for missing secrets; existing secrets untouched\n" +
+			"  audit    — checks that each secret name is present; cannot verify values\n\n" +
+			"⚠ Always update secret values manually after repository creation.",
+		DocsURL: "https://docs.github.com/en/actions/security-guides/using-secrets-in-github-actions#creating-secrets-for-a-repository",
+		Example: "secrets:\n  - name: API_TOKEN\n    value: \"PLACEHOLDER\"  # replace after creation",
+	},
+	// ── Security ──────────────────────────────────────────────────────────
+	{
+		Name:    "dependabot_alerts",
+		Section: SectionSecurity,
+		Type:    "bool",
+		Short:   "Enable Dependabot vulnerability alerts",
+		Long: "In the GitHub UI: Settings → Code security and analysis → Dependabot alerts.\n\n" +
+			"When true, GitHub scans this repository's dependency manifests and notifies\n" +
+			"you of known security vulnerabilities in dependencies. Alerts appear in the\n" +
+			"Security tab and can also trigger email or web notifications.\n\n" +
+			"Available for all repository types (public and private). No GitHub Advanced\n" +
+			"Security license required.",
+		DocsURL: "https://docs.github.com/en/code-security/dependabot/dependabot-alerts/about-dependabot-alerts",
+		Example: "security:\n  dependabot_alerts: true",
+	},
+	{
+		Name:    "dependabot_security_updates",
+		Section: SectionSecurity,
+		Type:    "bool",
+		Short:   "Enable Dependabot automated security update PRs",
+		Long: "In the GitHub UI: Settings → Code security and analysis → Dependabot security updates.\n\n" +
+			"When true (requires dependabot_alerts to also be enabled), Dependabot\n" +
+			"automatically opens pull requests to update vulnerable dependencies to\n" +
+			"a patched version.\n\n" +
+			"Available for all repository types. No GitHub Advanced Security required.",
+		DocsURL: "https://docs.github.com/en/code-security/dependabot/dependabot-security-updates/about-dependabot-security-updates",
+		Example: "security:\n  dependabot_alerts: true\n  dependabot_security_updates: true",
+	},
+	{
+		Name:    "secret_scanning",
+		Section: SectionSecurity,
+		Type:    "bool",
+		Short:   "Enable secret scanning to detect leaked credentials",
+		Long: "In the GitHub UI: Settings → Code security and analysis → Secret scanning.\n\n" +
+			"When true, GitHub scans commits for known credential patterns (API keys,\n" +
+			"tokens, certificates) and alerts repository owners when a match is found.\n\n" +
+			"Availability:\n" +
+			"  Public repos — free, always available\n" +
+			"  Private repos — requires GitHub Advanced Security (enterprise or paid org)\n\n" +
+			"If this field is set for a private repo without GitHub Advanced Security,\n" +
+			"the API silently ignores the setting.",
+		DocsURL: "https://docs.github.com/en/code-security/secret-scanning/about-secret-scanning",
+		Example: "security:\n  secret_scanning: true",
+	},
+	{
+		Name:    "secret_scanning_push_protection",
+		Section: SectionSecurity,
+		Type:    "bool",
+		Short:   "Block pushes containing detected secrets (requires secret_scanning)",
+		Long: "In the GitHub UI: Settings → Code security and analysis → Push protection.\n\n" +
+			"When true (requires secret_scanning to be enabled), GitHub blocks git pushes\n" +
+			"that contain patterns matching known secret formats. The developer is shown\n" +
+			"an alert and must either remove the secret or acknowledge it before pushing.\n\n" +
+			"Availability:\n" +
+			"  Public repos — free, always available\n" +
+			"  Private repos — requires GitHub Advanced Security (enterprise or paid org)\n\n" +
+			"Push protection is the strongest preventative control — it stops secrets\n" +
+			"from reaching the repository rather than alerting after the fact.",
+		DocsURL: "https://docs.github.com/en/code-security/secret-scanning/protecting-pushes-with-secret-scanning",
+		Example: "security:\n  secret_scanning: true\n  secret_scanning_push_protection: true",
 	},
 }
 

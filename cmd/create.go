@@ -117,6 +117,48 @@ var createCmd = &cobra.Command{
 			}
 		}
 
+		ui.Header("Actions:")
+		if manifest.Actions == nil {
+			ui.Info("No actions permissions configured, skipping.")
+		} else if err := github.UpdateActionsPermissions(client, owner, name, manifest.Actions); err != nil {
+			ui.Error("Failed to apply actions permissions: %v", err)
+		} else {
+			ui.Success("Applied actions permissions")
+		}
+
+		ui.Header("Variables:")
+		if len(manifest.Variables) == 0 {
+			ui.Success("No repository variables to apply")
+		} else if err := github.ApplyRepoVariables(client, owner, name, manifest.Variables); err != nil {
+			ui.Error("Failed to apply repository variables: %v", err)
+		} else {
+			ui.Success("Applied %d repository variable(s)", len(manifest.Variables))
+		}
+
+		ui.Header("Secrets:")
+		if len(manifest.Secrets) == 0 {
+			ui.Success("No repository secrets to apply")
+		} else {
+			warns, err := github.ApplyRepoSecrets(client, owner, name, manifest.Secrets)
+			if err != nil {
+				ui.Error("Failed to apply repository secrets: %v", err)
+			} else {
+				ui.Success("Applied %d repository secret(s)", len(manifest.Secrets))
+				for _, w := range warns {
+					ui.Warning("%s", w)
+				}
+			}
+		}
+
+		ui.Header("Security:")
+		if manifest.Security == nil {
+			ui.Info("No security settings configured, skipping.")
+		} else if err := github.UpdateSecuritySettings(client, owner, name, manifest.Security); err != nil {
+			ui.Error("Failed to apply security settings: %v", err)
+		} else {
+			ui.Success("Applied security settings")
+		}
+
 		ui.SummaryLine("Done! Repository available at %s", repo.HTMLURL)
 		return nil
 	},

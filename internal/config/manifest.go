@@ -7,9 +7,34 @@ const SecretPlaceholder = "PLACEHOLDER"
 
 // Manifest represents the structure of a template-metadata.yml file.
 type Manifest struct {
-	Settings     RepoSettings  `yaml:"settings"`
-	Topics       []string      `yaml:"topics,omitempty"`
-	Environments []Environment `yaml:"environments,omitempty"`
+	Settings     RepoSettings         `yaml:"settings"`
+	Topics       []string             `yaml:"topics,omitempty"`
+	Environments []Environment        `yaml:"environments,omitempty"`
+	Variables    []EnvironmentVariable `yaml:"variables,omitempty"`
+	Secrets      []EnvironmentSecret   `yaml:"secrets,omitempty"`
+	Actions      *ActionsSettings     `yaml:"actions,omitempty"`
+	Security     *SecuritySettings    `yaml:"security,omitempty"`
+}
+
+// ActionsSettings maps to GitHub Actions repository permission settings.
+// These are stored in two separate API endpoints (actions/permissions and
+// actions/permissions/workflow) but presented as a single manifest section.
+type ActionsSettings struct {
+	CanApprovePullRequestReviews *bool  `yaml:"can_approve_pull_request_reviews,omitempty"`
+	ShaPinningRequired           *bool  `yaml:"sha_pinning_required,omitempty"`
+	DefaultWorkflowPermissions   string `yaml:"default_workflow_permissions,omitempty"`
+}
+
+// SecuritySettings maps to GitHub repository security analysis settings.
+// Dependabot alerts use a dedicated /vulnerability-alerts endpoint;
+// the remaining fields use the security_and_analysis object on PATCH /repos.
+// Note: secret_scanning and secret_scanning_push_protection require the
+// repository to be public or the account to have GitHub Advanced Security.
+type SecuritySettings struct {
+	DependabotAlerts             *bool `yaml:"dependabot_alerts,omitempty"`
+	DependabotSecurityUpdates    *bool `yaml:"dependabot_security_updates,omitempty"`
+	SecretScanning               *bool `yaml:"secret_scanning,omitempty"`
+	SecretScanningPushProtection *bool `yaml:"secret_scanning_push_protection,omitempty"`
 }
 
 // RepoSettings maps to GitHub repository settings API fields.

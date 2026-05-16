@@ -41,16 +41,24 @@ var snapshotCmd = &cobra.Command{
 		}
 
 		var (
-			repoInfo  *ghapi.RepoInfo
-			topics    []string
-			envs      []config.Environment
-			repoErr   error
-			topicsErr error
-			envsErr   error
+			repoInfo       *ghapi.RepoInfo
+			topics         []string
+			envs           []config.Environment
+			actionsSettings *config.ActionsSettings
+			repoVars        []config.EnvironmentVariable
+			repoSecrets     []config.EnvironmentSecret
+			vulnAlerts      bool
+			repoErr         error
+			topicsErr       error
+			envsErr         error
+			actionsErr      error
+			repoVarsErr     error
+			repoSecretsErr  error
+			vulnAlertsErr   error
 		)
 
 		var wg sync.WaitGroup
-		wg.Add(3)
+		wg.Add(7)
 
 		go func() {
 			defer wg.Done()
@@ -67,9 +75,29 @@ var snapshotCmd = &cobra.Command{
 			envs, envsErr = ghapi.GetEnvironments(client, owner, repo)
 		}()
 
+		go func() {
+			defer wg.Done()
+			actionsSettings, actionsErr = ghapi.GetActionsPermissions(client, owner, repo)
+		}()
+
+		go func() {
+			defer wg.Done()
+			repoVars, repoVarsErr = ghapi.GetRepoVariables(client, owner, repo)
+		}()
+
+		go func() {
+			defer wg.Done()
+			repoSecrets, repoSecretsErr = ghapi.GetRepoSecretNames(client, owner, repo)
+		}()
+
+		go func() {
+			defer wg.Done()
+			vulnAlerts, vulnAlertsErr = ghapi.GetVulnerabilityAlertsEnabled(client, owner, repo)
+		}()
+
 		wg.Wait()
 
-		for _, err := range []error{repoErr, topicsErr, envsErr} {
+		for _, err := range []error{repoErr, topicsErr, envsErr, actionsErr, repoVarsErr, repoSecretsErr, vulnAlertsErr} {
 			if err != nil {
 				return err
 			}
@@ -79,6 +107,10 @@ var snapshotCmd = &cobra.Command{
 			Settings:     ghapi.RepoInfoToSettings(repoInfo),
 			Topics:       topics,
 			Environments: envs,
+			Variables:    repoVars,
+			Secrets:      repoSecrets,
+			Actions:      actionsSettings,
+			Security:     ghapi.RepoInfoToSecurity(repoInfo, vulnAlerts),
 		}
 
 		yamlBytes, err := config.ManifestToYAML(manifest)

@@ -83,4 +83,58 @@ environments:
     secrets:
       - name: API_KEY
         value: "PLACEHOLDER"  # replace after creation
+variables:
+  - name: DEPLOY_URL
+    value: https://example.com
+secrets:
+  - name: API_TOKEN
+    value: "PLACEHOLDER"  # replace after creation
+actions:
+  can_approve_pull_request_reviews: false
+  sha_pinning_required: false
+  default_workflow_permissions: read
+security:
+  dependabot_alerts: true
+  dependabot_security_updates: true
+  secret_scanning: true               # public repos or GitHub Advanced Security only
+  secret_scanning_push_protection: true
 ```
+
+### `variables`
+
+Repository-level Actions variables injected into all workflow jobs as environment variables. Values are plaintext and visible in logs — use `secrets` for credentials.
+
+| Field | Type | Description |
+|---|---|---|
+| `name` | string | Variable name |
+| `value` | string | Variable value (plaintext) |
+
+### `secrets`
+
+Repository-level Actions secrets. Because GitHub never returns secret values via the API, `value` is always `"PLACEHOLDER"` in snapshots and manifests.
+
+| Field | Type | Description |
+|---|---|---|
+| `name` | string | Secret name |
+| `value` | string | Always `"PLACEHOLDER"` — update manually after creation |
+
+### `actions`
+
+GitHub Actions workflow permissions for this repository.
+
+| Field | Type | Description |
+|---|---|---|
+| `can_approve_pull_request_reviews` | bool | Allow the `GITHUB_TOKEN` to create and approve pull requests |
+| `sha_pinning_required` | bool | Require Actions to reference a full-length commit SHA (not a mutable tag) |
+| `default_workflow_permissions` | string | Default `GITHUB_TOKEN` permission scope: `"read"` \| `"write"` |
+
+### `security`
+
+Code security and analysis settings. Fields unavailable for the repository type are silently ignored by the API.
+
+| Field | Type | Description |
+|---|---|---|
+| `dependabot_alerts` | bool | Enable Dependabot vulnerability alerts (all repo types) |
+| `dependabot_security_updates` | bool | Enable Dependabot automated security-update PRs (requires alerts) |
+| `secret_scanning` | bool | Scan for leaked credentials (public repos; or private repos with GitHub Advanced Security) |
+| `secret_scanning_push_protection` | bool | Block pushes containing secrets (requires `secret_scanning` enabled) |

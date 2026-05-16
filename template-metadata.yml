@@ -4,7 +4,7 @@ settings:
     has_projects: false
     has_discussions: false
     has_pull_requests: true
-    pull_request_creation_policy: collaborators_only
+    pull_request_creation_policy: all
     allow_squash_merge: true
     allow_merge_commit: true
     allow_rebase_merge: true
@@ -23,3 +23,16 @@ environments:
     - name: copilot
       prevent_self_review: false
       deployment_branch_policy: all
+variables:
+    - name: DEPLOY_URL
+      value: https://example.com
+secrets:
+    - name: API_TOKEN
+      value: "PLACEHOLDER"
+actions:
+    can_approve_pull_request_reviews: false
+    sha_pinning_required: false
+    default_workflow_permissions: read
+security:
+    dependabot_alerts: true
+    dependabot_security_updates: true

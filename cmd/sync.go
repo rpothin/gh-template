@@ -99,6 +99,52 @@ var syncCmd = &cobra.Command{
 			wg.Wait()
 		}
 
+		ui.Header("Actions:")
+		if manifest.Actions == nil {
+			ui.Info("No actions permissions configured, skipping.")
+		} else if err := ghapi.UpdateActionsPermissions(client, owner, repo, manifest.Actions); err != nil {
+			ui.Error("Failed to apply actions permissions: %v", err)
+			errs = append(errs, err)
+		} else {
+			ui.Success("Applied actions permissions")
+		}
+
+		ui.Header("Variables:")
+		if len(manifest.Variables) == 0 {
+			ui.Info("No repository variables configured, skipping.")
+		} else if err := ghapi.ApplyRepoVariables(client, owner, repo, manifest.Variables); err != nil {
+			ui.Error("Failed to apply repository variables: %v", err)
+			errs = append(errs, err)
+		} else {
+			ui.Success("Applied %d repository variable(s)", len(manifest.Variables))
+		}
+
+		ui.Header("Secrets:")
+		if len(manifest.Secrets) == 0 {
+			ui.Info("No repository secrets configured, skipping.")
+		} else {
+			warns, err := ghapi.ApplyRepoSecrets(client, owner, repo, manifest.Secrets)
+			if err != nil {
+				ui.Error("Failed to apply repository secrets: %v", err)
+				errs = append(errs, err)
+			} else {
+				ui.Success("Applied %d repository secret(s)", len(manifest.Secrets))
+				for _, w := range warns {
+					ui.Warning("%s", w)
+				}
+			}
+		}
+
+		ui.Header("Security:")
+		if manifest.Security == nil {
+			ui.Info("No security settings configured, skipping.")
+		} else if err := ghapi.UpdateSecuritySettings(client, owner, repo, manifest.Security); err != nil {
+			ui.Error("Failed to apply security settings: %v", err)
+			errs = append(errs, err)
+		} else {
+			ui.Success("Applied security settings")
+		}
+
 		if len(errs) == 0 {
 			ui.SummaryLine("Sync complete.")
 			return nil

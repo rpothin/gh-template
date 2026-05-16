@@ -48,16 +48,24 @@ var auditCmd = &cobra.Command{
 		}
 
 		var (
-			liveRepo    *ghapi.RepoInfo
-			liveTopics  []string
-			liveEnvs    []config.Environment
-			repoErr     error
-			topicsErr   error
-			envErr      error
-			fetchWaiter sync.WaitGroup
+			liveRepo       *ghapi.RepoInfo
+			liveTopics     []string
+			liveEnvs       []config.Environment
+			liveActions    *config.ActionsSettings
+			liveVars       []config.EnvironmentVariable
+			liveSecrets    []config.EnvironmentSecret
+			vulnAlerts     bool
+			repoErr        error
+			topicsErr      error
+			envErr         error
+			actionsErr     error
+			varsErr        error
+			secretsErr     error
+			vulnAlertsErr  error
+			fetchWaiter    sync.WaitGroup
 		)
 
-		fetchWaiter.Add(3)
+		fetchWaiter.Add(7)
 
 		go func() {
 			defer fetchWaiter.Done()
@@ -74,9 +82,29 @@ var auditCmd = &cobra.Command{
 			liveEnvs, envErr = ghapi.GetEnvironments(client, owner, repo)
 		}()
 
+		go func() {
+			defer fetchWaiter.Done()
+			liveActions, actionsErr = ghapi.GetActionsPermissions(client, owner, repo)
+		}()
+
+		go func() {
+			defer fetchWaiter.Done()
+			liveVars, varsErr = ghapi.GetRepoVariables(client, owner, repo)
+		}()
+
+		go func() {
+			defer fetchWaiter.Done()
+			liveSecrets, secretsErr = ghapi.GetRepoSecretNames(client, owner, repo)
+		}()
+
+		go func() {
+			defer fetchWaiter.Done()
+			vulnAlerts, vulnAlertsErr = ghapi.GetVulnerabilityAlertsEnabled(client, owner, repo)
+		}()
+
 		fetchWaiter.Wait()
 
-		if repoErr != nil || topicsErr != nil || envErr != nil {
+		if repoErr != nil || topicsErr != nil || envErr != nil || actionsErr != nil || varsErr != nil || secretsErr != nil || vulnAlertsErr != nil {
 			if repoErr != nil {
 				ui.Error("%v", repoErr)
 			}
@@ -85,6 +113,18 @@ var auditCmd = &cobra.Command{
 			}
 			if envErr != nil {
 				ui.Error("%v", envErr)
+			}
+			if actionsErr != nil {
+				ui.Error("%v", actionsErr)
+			}
+			if varsErr != nil {
+				ui.Error("%v", varsErr)
+			}
+			if secretsErr != nil {
+				ui.Error("%v", secretsErr)
+			}
+			if vulnAlertsErr != nil {
+				ui.Error("%v", vulnAlertsErr)
 			}
 			os.Exit(1)
 		}
@@ -95,6 +135,10 @@ var auditCmd = &cobra.Command{
 		auditSettings(manifest.Settings, liveRepo, &driftCount)
 		auditTopics(manifest.Topics, liveTopics, &driftCount)
 		auditEnvironments(manifest.Environments, liveEnvs, &driftCount)
+		auditActions(manifest.Actions, liveActions, &driftCount)
+		liveSecurity := ghapi.RepoInfoToSecurity(liveRepo, vulnAlerts)
+		auditSecurity(manifest.Security, liveSecurity, &driftCount)
+		auditRepoVarsSecrets(manifest.Variables, manifest.Secrets, liveVars, liveSecrets, &driftCount)
 
 		if driftCount == 0 {
 			ui.SummaryLine("Summary: ✓ No drift detected. %s matches config.", auditRepo)
@@ -368,4 +412,131 @@ func compareStringSetting(field, want, got string, driftCount *int) {
 
 	ui.AuditDrift(field, want, got)
 	*driftCount++
+}
+
+func auditActions(cfg, live *config.ActionsSettings, driftCount *int) {
+	fmt.Fprintln(os.Stderr, "\nActions:")
+
+	if cfg == nil {
+		ui.Info("  (no actions permissions configured in manifest)")
+		return
+	}
+	if live == nil {
+		ui.Warning("  (could not read live actions permissions)")
+		return
+	}
+
+	if cfg.ShaPinningRequired != nil {
+		liveVal := false
+		if live.ShaPinningRequired != nil {
+			liveVal = *live.ShaPinningRequired
+		}
+		if *cfg.ShaPinningRequired != liveVal {
+			ui.AuditDrift("sha_pinning_required", *cfg.ShaPinningRequired, liveVal)
+			*driftCount++
+		} else {
+			ui.AuditMatch("sha_pinning_required", *cfg.ShaPinningRequired)
+		}
+	}
+
+	if cfg.CanApprovePullRequestReviews != nil {
+		liveVal := false
+		if live.CanApprovePullRequestReviews != nil {
+			liveVal = *live.CanApprovePullRequestReviews
+		}
+		if *cfg.CanApprovePullRequestReviews != liveVal {
+			ui.AuditDrift("can_approve_pull_request_reviews", *cfg.CanApprovePullRequestReviews, liveVal)
+			*driftCount++
+		} else {
+			ui.AuditMatch("can_approve_pull_request_reviews", *cfg.CanApprovePullRequestReviews)
+		}
+	}
+
+	if cfg.DefaultWorkflowPermissions != "" {
+		liveVal := live.DefaultWorkflowPermissions
+		if cfg.DefaultWorkflowPermissions != liveVal {
+			ui.AuditDrift("default_workflow_permissions", cfg.DefaultWorkflowPermissions, liveVal)
+			*driftCount++
+		} else {
+			ui.AuditMatch("default_workflow_permissions", cfg.DefaultWorkflowPermissions)
+		}
+	}
+}
+
+func auditSecurity(cfg, live *config.SecuritySettings, driftCount *int) {
+	fmt.Fprintln(os.Stderr, "\nSecurity:")
+
+	if cfg == nil {
+		ui.Info("  (no security settings configured in manifest)")
+		return
+	}
+
+	liveAlerts := false
+	if live != nil && live.DependabotAlerts != nil {
+		liveAlerts = *live.DependabotAlerts
+	}
+	compareBoolSetting("dependabot_alerts", cfg.DependabotAlerts, liveAlerts, driftCount)
+
+	var liveUpdates bool
+	if live != nil && live.DependabotSecurityUpdates != nil {
+		liveUpdates = *live.DependabotSecurityUpdates
+	}
+	compareBoolSetting("dependabot_security_updates", cfg.DependabotSecurityUpdates, liveUpdates, driftCount)
+
+	var liveScanning bool
+	if live != nil && live.SecretScanning != nil {
+		liveScanning = *live.SecretScanning
+	}
+	compareBoolSetting("secret_scanning", cfg.SecretScanning, liveScanning, driftCount)
+
+	var livePushProtection bool
+	if live != nil && live.SecretScanningPushProtection != nil {
+		livePushProtection = *live.SecretScanningPushProtection
+	}
+	compareBoolSetting("secret_scanning_push_protection", cfg.SecretScanningPushProtection, livePushProtection, driftCount)
+}
+
+func auditRepoVarsSecrets(cfgVars []config.EnvironmentVariable, cfgSecrets []config.EnvironmentSecret, liveVars []config.EnvironmentVariable, liveSecrets []config.EnvironmentSecret, driftCount *int) {
+	fmt.Fprintln(os.Stderr, "\nRepository Variables:")
+
+	if len(cfgVars) == 0 {
+		ui.Info("  (no repository variables configured in manifest)")
+	} else {
+		liveVarMap := make(map[string]string, len(liveVars))
+		for _, v := range liveVars {
+			liveVarMap[v.Name] = v.Value
+		}
+		for _, v := range cfgVars {
+			if liveVal, ok := liveVarMap[v.Name]; ok {
+				if v.Value == liveVal {
+					ui.AuditMatch("variable:"+v.Name, v.Value)
+				} else {
+					ui.AuditDrift("variable:"+v.Name, v.Value, liveVal)
+					*driftCount++
+				}
+			} else {
+				ui.AuditDrift("variable:"+v.Name, v.Value, "(missing)")
+				*driftCount++
+			}
+		}
+	}
+
+	fmt.Fprintln(os.Stderr, "\nRepository Secrets:")
+
+	if len(cfgSecrets) == 0 {
+		ui.Info("  (no repository secrets configured in manifest)")
+	} else {
+		liveSecretSet := make(map[string]struct{}, len(liveSecrets))
+		for _, s := range liveSecrets {
+			liveSecretSet[s.Name] = struct{}{}
+		}
+		for _, s := range cfgSecrets {
+			if _, ok := liveSecretSet[s.Name]; ok {
+				ui.AuditMatch("secret:"+s.Name, "(exists)")
+			} else {
+				ui.AuditDrift("secret:"+s.Name, "(exists)", "(missing)")
+				*driftCount++
+			}
+		}
+	}
 }
