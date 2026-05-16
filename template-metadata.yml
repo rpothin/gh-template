@@ -18,17 +18,5 @@ topics:
     - avm-aligned
 environments:
     - name: copilot
-      wait_timer: 0
       prevent_self_review: false
-      reviewers:
-          - rpothin
-      deployment_branch_policy: custom
-      deployment_branch_patterns:
-          - main
-          - "release/*"
-      variables:
-          - name: DEPLOY_ENV
-            value: production
-      secrets:
-          - name: API_KEY
-            value: "PLACEHOLDER"
+      deployment_branch_policy: all
