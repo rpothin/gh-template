@@ -54,6 +54,44 @@ var Fields = []FieldDef{
 		Example: "settings:\n  has_projects: false",
 	},
 	{
+		Name:    "has_discussions",
+		Section: SectionSettings,
+		Type:    "bool",
+		Short:   "Enable Discussions for community conversations",
+		Long: "In the GitHub UI: Settings → General → Features → Discussions.\n\n" +
+			"When true, the Discussions tab is shown on the repository page. Discussions\n" +
+			"provides a community forum for questions, ideas, and announcements — separate\n" +
+			"from issues (which track specific bugs or tasks).",
+		DocsURL: "https://docs.github.com/en/discussions",
+		Example: "settings:\n  has_discussions: true",
+	},
+	{
+		Name:    "has_pull_requests",
+		Section: SectionSettings,
+		Type:    "bool",
+		Short:   "Enable the Pull Requests tab",
+		Long: "In the GitHub UI: Settings → General → Features → Pull Requests.\n\n" +
+			"When false, the Pull Requests tab is hidden and no new pull requests can be\n" +
+			"opened on the repository. Useful for repositories that accept contributions\n" +
+			"exclusively through issues or are purely archival.",
+		DocsURL: "https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/managing-repository-settings/managing-pull-request-reviews-in-your-repository",
+		Example: "settings:\n  has_pull_requests: true",
+	},
+	{
+		Name:    "pull_request_creation_policy",
+		Section: SectionSettings,
+		Type:    "string",
+		Short:   `Who can open pull requests: "all" | "collaborators_only"`,
+		Long: "In the GitHub UI: Settings → General → Pull Requests → Pull request creation.\n\n" +
+			"Controls who is allowed to open pull requests against this repository:\n" +
+			"  all                — any GitHub user can open a pull request (default for public repos)\n" +
+			"  collaborators_only — only repository collaborators can open pull requests\n\n" +
+			"Setting this to \"collaborators_only\" reduces noise from external contributors\n" +
+			"while still allowing forks and issues.",
+		DocsURL: "https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/managing-repository-settings",
+		Example: "settings:\n  pull_request_creation_policy: collaborators_only",
+	},
+	{
 		Name:    "allow_squash_merge",
 		Section: SectionSettings,
 		Type:    "bool",

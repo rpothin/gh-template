@@ -24,6 +24,9 @@ All fields are optional. Omitting a field means it is not applied by `sync` and 
 | `has_wiki` | bool | Enable the repository Wiki tab |
 | `has_issues` | bool | Enable the Issues tab for bug/feature tracking |
 | `has_projects` | bool | Enable the Projects tab (kanban/task boards) |
+| `has_discussions` | bool | Enable Discussions for community conversations |
+| `has_pull_requests` | bool | Enable the Pull Requests tab |
+| `pull_request_creation_policy` | string | Who can open PRs: `"all"` \| `"collaborators_only"` |
 | `allow_squash_merge` | bool | Allow squash-merging pull requests |
 | `allow_merge_commit` | bool | Allow standard merge commits on pull requests |
 | `allow_rebase_merge` | bool | Allow rebase-merging pull requests |

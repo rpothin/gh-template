@@ -14,19 +14,22 @@ type RepoInfo struct {
 	Owner    struct {
 		Login string `json:"login"`
 	} `json:"owner"`
-	Description         string `json:"description"`
-	Private             bool   `json:"private"`
-	Visibility          string `json:"visibility"`
-	HTMLURL             string `json:"html_url"`
-	HasIssues           bool   `json:"has_issues"`
-	HasProjects         bool   `json:"has_projects"`
-	HasWiki             bool   `json:"has_wiki"`
-	AllowSquashMerge    bool   `json:"allow_squash_merge"`
-	AllowMergeCommit    bool   `json:"allow_merge_commit"`
-	AllowRebaseMerge    bool   `json:"allow_rebase_merge"`
-	AllowAutoMerge      bool   `json:"allow_auto_merge"`
-	DeleteBranchOnMerge bool   `json:"delete_branch_on_merge"`
-	AllowUpdateBranch   bool   `json:"allow_update_branch"`
+	Description                string `json:"description"`
+	Private                    bool   `json:"private"`
+	Visibility                 string `json:"visibility"`
+	HTMLURL                    string `json:"html_url"`
+	HasIssues                  bool   `json:"has_issues"`
+	HasProjects                bool   `json:"has_projects"`
+	HasWiki                    bool   `json:"has_wiki"`
+	HasDiscussions             bool   `json:"has_discussions"`
+	HasPullRequests            bool   `json:"has_pull_requests"`
+	PullRequestCreationPolicy  string `json:"pull_request_creation_policy"`
+	AllowSquashMerge           bool   `json:"allow_squash_merge"`
+	AllowMergeCommit           bool   `json:"allow_merge_commit"`
+	AllowRebaseMerge           bool   `json:"allow_rebase_merge"`
+	AllowAutoMerge             bool   `json:"allow_auto_merge"`
+	DeleteBranchOnMerge        bool   `json:"delete_branch_on_merge"`
+	AllowUpdateBranch          bool   `json:"allow_update_branch"`
 }
 
 // GetRepository fetches repository metadata from the GitHub API.
@@ -49,6 +52,15 @@ func repoUpdatePayload(s config.RepoSettings) map[string]interface{} {
 	}
 	if s.HasProjects != nil {
 		p["has_projects"] = *s.HasProjects
+	}
+	if s.HasDiscussions != nil {
+		p["has_discussions"] = *s.HasDiscussions
+	}
+	if s.HasPullRequests != nil {
+		p["has_pull_requests"] = *s.HasPullRequests
+	}
+	if s.PullRequestCreationPolicy != "" {
+		p["pull_request_creation_policy"] = s.PullRequestCreationPolicy
 	}
 	if s.AllowSquashMerge != nil {
 		p["allow_squash_merge"] = *s.AllowSquashMerge
@@ -175,17 +187,20 @@ func GetAuthenticatedUser(client *gogithub.RESTClient) (string, error) {
 // RepoInfoToSettings converts a RepoInfo to a config.RepoSettings with pointer fields.
 func RepoInfoToSettings(info *RepoInfo) config.RepoSettings {
 	return config.RepoSettings{
-		HasWiki:             boolPtr(info.HasWiki),
-		HasIssues:           boolPtr(info.HasIssues),
-		HasProjects:         boolPtr(info.HasProjects),
-		AllowSquashMerge:    boolPtr(info.AllowSquashMerge),
-		AllowMergeCommit:    boolPtr(info.AllowMergeCommit),
-		AllowRebaseMerge:    boolPtr(info.AllowRebaseMerge),
-		AllowAutoMerge:      boolPtr(info.AllowAutoMerge),
-		DeleteBranchOnMerge: boolPtr(info.DeleteBranchOnMerge),
-		AllowUpdateBranch:   boolPtr(info.AllowUpdateBranch),
-		Visibility:          info.Visibility,
-		Description:         info.Description,
+		HasWiki:                   boolPtr(info.HasWiki),
+		HasIssues:                 boolPtr(info.HasIssues),
+		HasProjects:               boolPtr(info.HasProjects),
+		HasDiscussions:            boolPtr(info.HasDiscussions),
+		HasPullRequests:           boolPtr(info.HasPullRequests),
+		PullRequestCreationPolicy: info.PullRequestCreationPolicy,
+		AllowSquashMerge:          boolPtr(info.AllowSquashMerge),
+		AllowMergeCommit:          boolPtr(info.AllowMergeCommit),
+		AllowRebaseMerge:          boolPtr(info.AllowRebaseMerge),
+		AllowAutoMerge:            boolPtr(info.AllowAutoMerge),
+		DeleteBranchOnMerge:       boolPtr(info.DeleteBranchOnMerge),
+		AllowUpdateBranch:         boolPtr(info.AllowUpdateBranch),
+		Visibility:                info.Visibility,
+		Description:               info.Description,
 	}
 }
 

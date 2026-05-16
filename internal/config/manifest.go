@@ -15,17 +15,20 @@ type Manifest struct {
 // RepoSettings maps to GitHub repository settings API fields.
 // Pointer types allow distinguishing "not configured" (nil) from explicit false.
 type RepoSettings struct {
-	HasWiki             *bool  `yaml:"has_wiki,omitempty"`
-	HasIssues           *bool  `yaml:"has_issues,omitempty"`
-	HasProjects         *bool  `yaml:"has_projects,omitempty"`
-	AllowSquashMerge    *bool  `yaml:"allow_squash_merge,omitempty"`
-	AllowMergeCommit    *bool  `yaml:"allow_merge_commit,omitempty"`
-	AllowRebaseMerge    *bool  `yaml:"allow_rebase_merge,omitempty"`
-	AllowAutoMerge      *bool  `yaml:"allow_auto_merge,omitempty"`
-	DeleteBranchOnMerge *bool  `yaml:"delete_branch_on_merge,omitempty"`
-	AllowUpdateBranch   *bool  `yaml:"allow_update_branch,omitempty"`
-	Visibility          string `yaml:"visibility,omitempty"`
-	Description         string `yaml:"description,omitempty"`
+	HasWiki                    *bool  `yaml:"has_wiki,omitempty"`
+	HasIssues                  *bool  `yaml:"has_issues,omitempty"`
+	HasProjects                *bool  `yaml:"has_projects,omitempty"`
+	HasDiscussions             *bool  `yaml:"has_discussions,omitempty"`
+	HasPullRequests            *bool  `yaml:"has_pull_requests,omitempty"`
+	PullRequestCreationPolicy  string `yaml:"pull_request_creation_policy,omitempty"`
+	AllowSquashMerge           *bool  `yaml:"allow_squash_merge,omitempty"`
+	AllowMergeCommit           *bool  `yaml:"allow_merge_commit,omitempty"`
+	AllowRebaseMerge           *bool  `yaml:"allow_rebase_merge,omitempty"`
+	AllowAutoMerge             *bool  `yaml:"allow_auto_merge,omitempty"`
+	DeleteBranchOnMerge        *bool  `yaml:"delete_branch_on_merge,omitempty"`
+	AllowUpdateBranch          *bool  `yaml:"allow_update_branch,omitempty"`
+	Visibility                 string `yaml:"visibility,omitempty"`
+	Description                string `yaml:"description,omitempty"`
 }
 
 // Environment represents a GitHub Actions deployment environment.
