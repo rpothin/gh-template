@@ -21,14 +21,12 @@ type RepoInfo struct {
 	HasIssues           bool   `json:"has_issues"`
 	HasProjects         bool   `json:"has_projects"`
 	HasWiki             bool   `json:"has_wiki"`
-	HasDownloads        bool   `json:"has_downloads"`
 	AllowSquashMerge    bool   `json:"allow_squash_merge"`
 	AllowMergeCommit    bool   `json:"allow_merge_commit"`
 	AllowRebaseMerge    bool   `json:"allow_rebase_merge"`
 	AllowAutoMerge      bool   `json:"allow_auto_merge"`
 	DeleteBranchOnMerge bool   `json:"delete_branch_on_merge"`
 	AllowUpdateBranch   bool   `json:"allow_update_branch"`
-	IsTemplate          bool   `json:"is_template"`
 }
 
 // GetRepository fetches repository metadata from the GitHub API.
@@ -52,9 +50,6 @@ func repoUpdatePayload(s config.RepoSettings) map[string]interface{} {
 	if s.HasProjects != nil {
 		p["has_projects"] = *s.HasProjects
 	}
-	if s.HasDownloads != nil {
-		p["has_downloads"] = *s.HasDownloads
-	}
 	if s.AllowSquashMerge != nil {
 		p["allow_squash_merge"] = *s.AllowSquashMerge
 	}
@@ -72,9 +67,6 @@ func repoUpdatePayload(s config.RepoSettings) map[string]interface{} {
 	}
 	if s.AllowUpdateBranch != nil {
 		p["allow_update_branch"] = *s.AllowUpdateBranch
-	}
-	if s.IsTemplate != nil {
-		p["is_template"] = *s.IsTemplate
 	}
 	if s.Visibility != "" {
 		p["visibility"] = s.Visibility
@@ -186,14 +178,12 @@ func RepoInfoToSettings(info *RepoInfo) config.RepoSettings {
 		HasWiki:             boolPtr(info.HasWiki),
 		HasIssues:           boolPtr(info.HasIssues),
 		HasProjects:         boolPtr(info.HasProjects),
-		HasDownloads:        boolPtr(info.HasDownloads),
 		AllowSquashMerge:    boolPtr(info.AllowSquashMerge),
 		AllowMergeCommit:    boolPtr(info.AllowMergeCommit),
 		AllowRebaseMerge:    boolPtr(info.AllowRebaseMerge),
 		AllowAutoMerge:      boolPtr(info.AllowAutoMerge),
 		DeleteBranchOnMerge: boolPtr(info.DeleteBranchOnMerge),
 		AllowUpdateBranch:   boolPtr(info.AllowUpdateBranch),
-		IsTemplate:          boolPtr(info.IsTemplate),
 		Visibility:          info.Visibility,
 		Description:         info.Description,
 	}

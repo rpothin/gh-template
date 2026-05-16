@@ -54,17 +54,6 @@ var Fields = []FieldDef{
 		Example: "settings:\n  has_projects: false",
 	},
 	{
-		Name:    "has_downloads",
-		Section: SectionSettings,
-		Type:    "bool",
-		Short:   "Enable the legacy releases/downloads section",
-		Long: "Legacy setting that controls the Downloads section. Most repositories use\n" +
-			"the Releases page instead. New repositories default this to true but it\n" +
-			"is rarely meaningful in modern workflows.",
-		DocsURL: "https://docs.github.com/en/repositories/releasing-projects-on-github",
-		Example: "settings:\n  has_downloads: false",
-	},
-	{
 		Name:    "allow_squash_merge",
 		Section: SectionSettings,
 		Type:    "bool",
@@ -131,17 +120,6 @@ var Fields = []FieldDef{
 		Example: "settings:\n  allow_update_branch: true",
 	},
 	{
-		Name:    "is_template",
-		Section: SectionSettings,
-		Type:    "bool",
-		Short:   "Mark this repo as a GitHub template repository",
-		Long: "When true, the repository appears in the \"Use this template\" flow on GitHub.\n" +
-			"Other users can generate new repositories pre-populated with this repo's code.\n" +
-			"This is the source repository that `gh template create --template` targets.",
-		DocsURL: "https://docs.github.com/en/repositories/creating-and-managing-repositories/creating-a-template-repository",
-		Example: "settings:\n  is_template: true",
-	},
-	{
 		Name:    "visibility",
 		Section: SectionSettings,
 		Type:    "string",
@@ -179,9 +157,11 @@ var Fields = []FieldDef{
 		Section: SectionEnvironments,
 		Type:    "int",
 		Short:   "Minutes to wait before a deployment can proceed (0–43200)",
-		Long: "A deployment protection rule that adds a mandatory delay before any Actions\n" +
-			"job targeting this environment is allowed to run. Set to 0 to disable the\n" +
-			"wait. The maximum value is 43200 (equivalent to 30 days).",
+		Long: "In the GitHub UI: Settings → Environments → [environment name]\n" +
+			"  → Environment protection rules → Wait timer.\n\n" +
+			"Adds a mandatory delay (in minutes) before any Actions job targeting this\n" +
+			"environment is allowed to run. Set to 0 to disable the wait.\n" +
+			"The maximum value is 43200 (equivalent to 30 days).",
 		DocsURL: "https://docs.github.com/en/actions/deployment/targeting-different-environments/using-environments-for-deployment#wait-timer",
 		Example: "environments:\n  - name: production\n    wait_timer: 5",
 	},

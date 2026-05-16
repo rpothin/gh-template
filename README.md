@@ -24,14 +24,12 @@ All fields are optional. Omitting a field means it is not applied by `sync` and 
 | `has_wiki` | bool | Enable the repository Wiki tab |
 | `has_issues` | bool | Enable the Issues tab for bug/feature tracking |
 | `has_projects` | bool | Enable the Projects tab (kanban/task boards) |
-| `has_downloads` | bool | Enable the legacy releases/downloads section |
 | `allow_squash_merge` | bool | Allow squash-merging pull requests |
 | `allow_merge_commit` | bool | Allow standard merge commits on pull requests |
 | `allow_rebase_merge` | bool | Allow rebase-merging pull requests |
 | `allow_auto_merge` | bool | Let PRs auto-merge once required checks pass |
 | `delete_branch_on_merge` | bool | Auto-delete source branch after PR merge |
 | `allow_update_branch` | bool | Show "Update branch" button on PRs behind base |
-| `is_template` | bool | Mark this repo as a GitHub template repository |
 | `visibility` | string | Repository visibility: `"public"` or `"private"` |
 | `description` | string | Short description shown on the repository page |
 

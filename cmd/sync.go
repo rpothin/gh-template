@@ -128,9 +128,6 @@ func repoUpdatePayload(settings config.RepoSettings) map[string]interface{} {
 	if settings.HasProjects != nil {
 		payload["has_projects"] = *settings.HasProjects
 	}
-	if settings.HasDownloads != nil {
-		payload["has_downloads"] = *settings.HasDownloads
-	}
 	if settings.AllowSquashMerge != nil {
 		payload["allow_squash_merge"] = *settings.AllowSquashMerge
 	}
@@ -148,9 +145,6 @@ func repoUpdatePayload(settings config.RepoSettings) map[string]interface{} {
 	}
 	if settings.AllowUpdateBranch != nil {
 		payload["allow_update_branch"] = *settings.AllowUpdateBranch
-	}
-	if settings.IsTemplate != nil {
-		payload["is_template"] = *settings.IsTemplate
 	}
 	if settings.Visibility != "" {
 		payload["visibility"] = settings.Visibility

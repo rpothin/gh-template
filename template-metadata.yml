@@ -2,14 +2,12 @@ settings:
     has_wiki: false
     has_issues: true
     has_projects: false
-    has_downloads: true
     allow_squash_merge: true
     allow_merge_commit: true
     allow_rebase_merge: true
     allow_auto_merge: false
     delete_branch_on_merge: false
     allow_update_branch: false
-    is_template: true
     visibility: private
     description: AVM-aligned Terraform module template for Power Platform modules (res-*, ptn-*, utl-*) with workflows, documentation and agentic AI tooling.
 topics:
