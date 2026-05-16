@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 
 	"github.com/spf13/cobra"
@@ -86,6 +87,10 @@ var snapshotCmd = &cobra.Command{
 		}
 
 		if snapshotOutput != "" {
+			// If the output path is an existing directory, write the default filename inside it.
+			if info, statErr := os.Stat(snapshotOutput); statErr == nil && info.IsDir() {
+				snapshotOutput = filepath.Join(snapshotOutput, "template-metadata.yml")
+			}
 			if err := os.WriteFile(snapshotOutput, yamlBytes, 0644); err != nil {
 				return fmt.Errorf("writing snapshot to %q: %w", snapshotOutput, err)
 			}
