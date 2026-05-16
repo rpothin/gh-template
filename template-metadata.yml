@@ -1,0 +1,10 @@
+settings:
+  has_wiki: false
+  has_issues: true
+  delete_branch_on_merge: true
+  allow_update_branch: true
+topics:
+  - personal-project
+environments:
+  - name: production
+    wait_timer: 0
