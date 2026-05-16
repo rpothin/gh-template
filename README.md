@@ -39,10 +39,18 @@ A flat list of strings that label the repository on GitHub (e.g. `["go", "cli"]`
 
 ### `environments`
 
+Each entry in the `environments` list configures one GitHub Actions environment.
+
 | Field | Type | Description |
 |---|---|---|
 | `name` | string | Environment name (e.g. `"production"`, `"staging"`) |
 | `wait_timer` | int | Minutes to wait before a deployment can proceed (0–43200) |
+| `prevent_self_review` | bool | Prevent the deployer from approving their own deployment |
+| `reviewers` | []string | Usernames or `org/team-slug` references that must approve (up to 6) |
+| `deployment_branch_policy` | string | Branch/tag restriction mode: `"all"` \| `"protected"` \| `"custom"` |
+| `deployment_branch_patterns` | []string | Glob patterns allowed to deploy (only when policy is `"custom"`) |
+| `variables` | []object `{name, value}` | Plaintext environment variables injected into workflow jobs |
+| `secrets` | []object `{name, value}` | Named secrets to ensure exist; `value` is always `"PLACEHOLDER"` |
 
 ### Example
 
@@ -57,5 +65,19 @@ topics:
   - go-backend
 environments:
   - name: production
-    wait_timer: 0
+    wait_timer: 5
+    prevent_self_review: true
+    reviewers:
+      - rpothin
+      - my-org/platform-team
+    deployment_branch_policy: custom
+    deployment_branch_patterns:
+      - main
+      - "release/*"
+    variables:
+      - name: DEPLOY_ENV
+        value: production
+    secrets:
+      - name: API_KEY
+        value: "PLACEHOLDER"  # replace after creation
 ```

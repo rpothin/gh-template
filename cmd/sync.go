@@ -81,17 +81,18 @@ var syncCmd = &cobra.Command{
 				go func() {
 					defer wg.Done()
 
-					if err := ghapi.CreateOrUpdateEnvironment(client, owner, repo, env); err != nil {
-						mu.Lock()
-						defer mu.Unlock()
+					warns, err := ghapi.CreateOrUpdateEnvironment(client, owner, repo, env)
+					mu.Lock()
+					defer mu.Unlock()
+					if err != nil {
 						errs = append(errs, err)
 						ui.Error("Failed to sync environment %s: %v", env.Name, err)
 						return
 					}
-
-					mu.Lock()
-					defer mu.Unlock()
 					ui.Success("Created/updated environment: %s", env.Name)
+					for _, w := range warns {
+						ui.Warning("%s", w)
+					}
 				}()
 			}
 

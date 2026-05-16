@@ -20,8 +20,9 @@ var (
 )
 
 type environmentResult struct {
-	name string
-	err  error
+	name     string
+	warnings []string
+	err      error
 }
 
 var createCmd = &cobra.Command{
@@ -92,9 +93,11 @@ var createCmd = &cobra.Command{
 				wg.Add(1)
 				go func() {
 					defer wg.Done()
+					warns, err := github.CreateOrUpdateEnvironment(client, owner, name, env)
 					errCh <- environmentResult{
-						name: env.Name,
-						err:  github.CreateOrUpdateEnvironment(client, owner, name, env),
+						name:     env.Name,
+						warnings: warns,
+						err:      err,
 					}
 				}()
 			}
@@ -108,6 +111,9 @@ var createCmd = &cobra.Command{
 					continue
 				}
 				ui.Success("Created/updated environment: %s", result.name)
+				for _, w := range result.warnings {
+					ui.Warning("%s", w)
+				}
 			}
 		}
 

@@ -190,18 +190,13 @@ func auditEnvironments(configEnvs, liveEnvs []config.Environment, driftCount *in
 
 		liveEnv, ok := liveByName[env.Name]
 		if !ok {
-			ui.Error("%s (missing from live repo; want wait_timer: %d)", env.Name, env.WaitTimer)
+			ui.Error("%s (missing from live repo)", env.Name)
 			*driftCount++
 			continue
 		}
 
-		if env.WaitTimer == liveEnv.WaitTimer {
-			ui.Success("%s (wait_timer: %d)", env.Name, env.WaitTimer)
-			continue
-		}
-
-		ui.Error("%s (want wait_timer: %d, got %d)", env.Name, env.WaitTimer, liveEnv.WaitTimer)
-		*driftCount++
+		fmt.Fprintf(os.Stderr, "\n  %s:\n", env.Name)
+		auditEnvFields(env, liveEnv, driftCount)
 	}
 
 	extraEnvs := make([]config.Environment, 0)
@@ -214,14 +209,133 @@ func auditEnvironments(configEnvs, liveEnvs []config.Environment, driftCount *in
 	sort.Slice(extraEnvs, func(i, j int) bool {
 		return extraEnvs[i].Name < extraEnvs[j].Name
 	})
-
-	seenExtra := make(map[string]struct{}, len(extraEnvs))
 	for _, env := range extraEnvs {
-		if _, seen := seenExtra[env.Name]; seen {
-			continue
+		ui.Warning("%s (in live repo, not in config)", env.Name)
+	}
+}
+
+func auditEnvFields(cfg, live config.Environment, driftCount *int) {
+	// wait_timer
+	if cfg.WaitTimer != live.WaitTimer {
+		ui.AuditDrift("wait_timer", cfg.WaitTimer, live.WaitTimer)
+		*driftCount++
+	} else {
+		ui.AuditMatch("wait_timer", cfg.WaitTimer)
+	}
+
+	// prevent_self_review
+	if cfg.PreventSelfReview != nil {
+		liveVal := false
+		if live.PreventSelfReview != nil {
+			liveVal = *live.PreventSelfReview
 		}
-		seenExtra[env.Name] = struct{}{}
-		ui.Warning("%s (wait_timer: %d, not in config)", env.Name, env.WaitTimer)
+		if *cfg.PreventSelfReview != liveVal {
+			ui.AuditDrift("prevent_self_review", *cfg.PreventSelfReview, liveVal)
+			*driftCount++
+		} else {
+			ui.AuditMatch("prevent_self_review", *cfg.PreventSelfReview)
+		}
+	}
+
+	// reviewers
+	if cfg.Reviewers != nil {
+		liveSet := make(map[string]struct{}, len(live.Reviewers))
+		for _, r := range live.Reviewers {
+			liveSet[r] = struct{}{}
+		}
+		for _, r := range cfg.Reviewers {
+			if _, ok := liveSet[r]; ok {
+				ui.AuditMatch("reviewer", r)
+			} else {
+				ui.AuditDrift("reviewer", r, "(missing)")
+				*driftCount++
+			}
+		}
+		// warn about live reviewers not in the manifest (no drift — manifest owns what it declares)
+		cfgSet := make(map[string]struct{}, len(cfg.Reviewers))
+		for _, r := range cfg.Reviewers {
+			cfgSet[r] = struct{}{}
+		}
+		for _, r := range live.Reviewers {
+			if _, ok := cfgSet[r]; !ok {
+				ui.Warning("reviewer: %s (in live repo, not in config)", r)
+			}
+		}
+	}
+
+	// deployment_branch_policy
+	if cfg.DeploymentBranchPolicy != "" {
+		livePolicy := live.DeploymentBranchPolicy
+		if livePolicy == "" {
+			livePolicy = "all"
+		}
+		if cfg.DeploymentBranchPolicy != livePolicy {
+			ui.AuditDrift("deployment_branch_policy", cfg.DeploymentBranchPolicy, livePolicy)
+			*driftCount++
+		} else {
+			ui.AuditMatch("deployment_branch_policy", cfg.DeploymentBranchPolicy)
+		}
+		if cfg.DeploymentBranchPolicy == "custom" {
+			livePatternSet := make(map[string]struct{}, len(live.DeploymentBranchPatterns))
+			for _, p := range live.DeploymentBranchPatterns {
+				livePatternSet[p] = struct{}{}
+			}
+			for _, p := range cfg.DeploymentBranchPatterns {
+				if _, ok := livePatternSet[p]; ok {
+					ui.AuditMatch("deployment_branch_pattern", p)
+				} else {
+					ui.AuditDrift("deployment_branch_pattern", p, "(missing)")
+					*driftCount++
+				}
+			}
+			// warn about extra live patterns not in config (sync would remove them)
+			cfgPatternSet := make(map[string]struct{}, len(cfg.DeploymentBranchPatterns))
+			for _, p := range cfg.DeploymentBranchPatterns {
+				cfgPatternSet[p] = struct{}{}
+			}
+			for _, p := range live.DeploymentBranchPatterns {
+				if _, ok := cfgPatternSet[p]; !ok {
+					ui.Warning("deployment_branch_pattern: %s (in live repo, not in config; sync would remove it)", p)
+				}
+			}
+		}
+	}
+
+	// variables
+	if len(cfg.Variables) > 0 {
+		liveVarMap := make(map[string]string, len(live.Variables))
+		for _, v := range live.Variables {
+			liveVarMap[v.Name] = v.Value
+		}
+		for _, v := range cfg.Variables {
+			if liveVal, ok := liveVarMap[v.Name]; ok {
+				if v.Value == liveVal {
+					ui.AuditMatch("variable:"+v.Name, v.Value)
+				} else {
+					ui.AuditDrift("variable:"+v.Name, v.Value, liveVal)
+					*driftCount++
+				}
+			} else {
+				ui.AuditDrift("variable:"+v.Name, v.Value, "(missing)")
+				*driftCount++
+			}
+		}
+	}
+
+	// secrets (name presence only — values are unreadable)
+	if len(cfg.Secrets) > 0 {
+		liveSecretSet := make(map[string]struct{}, len(live.Secrets))
+		for _, s := range live.Secrets {
+			liveSecretSet[s.Name] = struct{}{}
+		}
+		for _, s := range cfg.Secrets {
+			if _, ok := liveSecretSet[s.Name]; ok {
+				ui.AuditMatch("secret:"+s.Name, "(exists)")
+			} else {
+				ui.AuditDrift("secret:"+s.Name, "(exists)", "(missing)")
+				*driftCount++
+			}
+		}
 	}
 }
 

@@ -165,6 +165,97 @@ var Fields = []FieldDef{
 		DocsURL: "https://docs.github.com/en/actions/deployment/targeting-different-environments/using-environments-for-deployment#wait-timer",
 		Example: "environments:\n  - name: production\n    wait_timer: 5",
 	},
+	{
+		Name:    "prevent_self_review",
+		Section: SectionEnvironments,
+		Type:    "bool",
+		Short:   "Prevent deployer from approving their own deployment",
+		Long: "In the GitHub UI: Settings → Environments → [environment name]\n" +
+			"  → Environment protection rules → Prevent self-review.\n\n" +
+			"When true, the user who triggered a deployment cannot be one of the required\n" +
+			"reviewers who approve it. Requires at least one reviewer to be configured.",
+		DocsURL: "https://docs.github.com/en/actions/deployment/targeting-different-environments/using-environments-for-deployment#required-reviewers",
+		Example: "environments:\n  - name: production\n    prevent_self_review: true",
+	},
+	{
+		Name:    "reviewers",
+		Section: SectionEnvironments,
+		Type:    "[]string",
+		Short:   "Users/teams that must approve a deployment (up to 6)",
+		Long: "In the GitHub UI: Settings → Environments → [environment name]\n" +
+			"  → Environment protection rules → Required reviewers.\n\n" +
+			"A list of GitHub usernames (e.g. \"rpothin\") or team references in\n" +
+			"\"org/team-slug\" format (e.g. \"my-org/platform-team\") who must approve\n" +
+			"before any Actions job targeting this environment can proceed.\n" +
+			"GitHub allows up to 6 reviewers per environment.\n\n" +
+			"At apply time (create/sync), usernames are resolved to numeric IDs.",
+		DocsURL: "https://docs.github.com/en/actions/deployment/targeting-different-environments/using-environments-for-deployment#required-reviewers",
+		Example: "environments:\n  - name: production\n    reviewers:\n      - rpothin\n      - my-org/platform-team",
+	},
+	{
+		Name:    "deployment_branch_policy",
+		Section: SectionEnvironments,
+		Type:    "string",
+		Short:   `Branch/tag restriction mode: "all" | "protected" | "custom"`,
+		Long: "In the GitHub UI: Settings → Environments → [environment name]\n" +
+			"  → Deployment branches and tags.\n\n" +
+			"Controls which branches and tags are allowed to deploy to this environment:\n" +
+			"  all       — any branch or tag (default; omit this field for the same effect)\n" +
+			"  protected — only branches with protection rules applied\n" +
+			"  custom    — only branches/tags matching patterns in deployment_branch_patterns",
+		DocsURL: "https://docs.github.com/en/actions/deployment/targeting-different-environments/using-environments-for-deployment#deployment-branches-and-tags",
+		Example: "environments:\n  - name: production\n    deployment_branch_policy: custom",
+	},
+	{
+		Name:    "deployment_branch_patterns",
+		Section: SectionEnvironments,
+		Type:    "[]string",
+		Short:   "Branch/tag name patterns allowed to deploy (when policy is \"custom\")",
+		Long: "Only used when deployment_branch_policy is \"custom\".\n\n" +
+			"A list of branch or tag name patterns (glob-style) that are allowed\n" +
+			"to deploy to this environment. Patterns support wildcards:\n" +
+			"  main        — exact branch name\n" +
+			"  release/*   — any branch starting with \"release/\"\n" +
+			"  v[0-9]*     — tags matching a version pattern\n\n" +
+			"At sync time, extra live patterns not in this list are removed.",
+		DocsURL: "https://docs.github.com/en/actions/deployment/targeting-different-environments/using-environments-for-deployment#deployment-branches-and-tags",
+		Example: "environments:\n  - name: production\n    deployment_branch_policy: custom\n    deployment_branch_patterns:\n      - main\n      - \"release/*\"",
+	},
+	{
+		Name:    "variables",
+		Section: SectionEnvironments,
+		Type:    "[]object",
+		Short:   "Environment variables available to Actions jobs for this environment",
+		Long: "In the GitHub UI: Settings → Environments → [environment name]\n" +
+			"  → Environment variables.\n\n" +
+			"A list of name/value pairs that are injected as environment variables\n" +
+			"into any Actions workflow job that targets this environment. Values are\n" +
+			"plaintext (not encrypted). Use secrets for sensitive data instead.\n\n" +
+			"At sync time, existing variables are updated; new ones are created.\n" +
+			"Variables not in the manifest are left untouched.",
+		DocsURL: "https://docs.github.com/en/actions/writing-workflows/choosing-what-your-workflow-does/store-information-in-variables#creating-configuration-variables-for-an-environment",
+		Example: "environments:\n  - name: production\n    variables:\n      - name: DEPLOY_ENV\n        value: production",
+	},
+	{
+		Name:    "secrets",
+		Section: SectionEnvironments,
+		Type:    "[]object",
+		Short:   "Named secrets to initialize in this environment (placeholder value)",
+		Long: "In the GitHub UI: Settings → Environments → [environment name]\n" +
+			"  → Environment secrets.\n\n" +
+			"A list of secret names to ensure exist in the environment. Because GitHub\n" +
+			"never returns secret values via the API, the manifest always stores\n" +
+			"value: \"PLACEHOLDER\" — this is not the real secret value.\n\n" +
+			"Behaviour by command:\n" +
+			"  snapshot — captures names only; value is always \"PLACEHOLDER\"\n" +
+			"  create   — initializes each missing secret with the literal string\n" +
+			"             \"PLACEHOLDER\" so the secret exists; prints a warning per secret\n" +
+			"  sync     — same as create for missing secrets; existing secrets are untouched\n" +
+			"  audit    — checks that each secret name is present; cannot verify values\n\n" +
+			"⚠ Always update secret values manually after repository creation.",
+		DocsURL: "https://docs.github.com/en/actions/deployment/targeting-different-environments/using-environments-for-deployment#environment-secrets",
+		Example: "environments:\n  - name: production\n    secrets:\n      - name: API_KEY\n        value: \"PLACEHOLDER\"  # replace after creation",
+	},
 }
 
 // FieldsByName returns a map of field name → FieldDef for O(1) lookup.
