@@ -28,14 +28,19 @@ type ActionsSettings struct {
 
 // SecuritySettings maps to GitHub repository security analysis settings.
 // Dependabot alerts use a dedicated /vulnerability-alerts endpoint;
+// private_vulnerability_reporting uses a dedicated /private-vulnerability-reporting endpoint;
 // the remaining fields use the security_and_analysis object on PATCH /repos.
 // Note: secret_scanning and secret_scanning_push_protection require the
 // repository to be public or the account to have GitHub Advanced Security.
+// Note: dependency_graph can only be disabled on private/internal repositories;
+// it is always enabled for public repositories.
 type SecuritySettings struct {
-	DependabotAlerts             *bool `yaml:"dependabot_alerts,omitempty"`
-	DependabotSecurityUpdates    *bool `yaml:"dependabot_security_updates,omitempty"`
-	SecretScanning               *bool `yaml:"secret_scanning,omitempty"`
-	SecretScanningPushProtection *bool `yaml:"secret_scanning_push_protection,omitempty"`
+	DependabotAlerts                 *bool `yaml:"dependabot_alerts,omitempty"`
+	DependabotSecurityUpdates        *bool `yaml:"dependabot_security_updates,omitempty"`
+	SecretScanning                   *bool `yaml:"secret_scanning,omitempty"`
+	SecretScanningPushProtection     *bool `yaml:"secret_scanning_push_protection,omitempty"`
+	PrivateVulnerabilityReporting    *bool `yaml:"private_vulnerability_reporting,omitempty"`
+	DependencyGraph                  *bool `yaml:"dependency_graph,omitempty"`
 }
 
 // RepoSettings maps to GitHub repository settings API fields.
