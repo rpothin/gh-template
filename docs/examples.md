@@ -48,7 +48,7 @@ security:
 Create a private repository:
 
 ```sh
-gh template create private-tool --manifest ./template-metadata.yml --private
+gh template create private-tool --manifest ./template-metadata.yml
 ```
 
 ## Production deployment environment
