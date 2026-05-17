@@ -9,10 +9,36 @@ A GitHub CLI extension to snapshot existing repositories' configuration, enhance
 | `gh template snapshot` | Capture a live repository's settings as a YAML manifest |
 | `gh template audit` | Detect configuration drift between config and live state |
 | `gh template sync` | Reconcile a live repository to match the config |
+| `gh template list` | List your own (and org) template repositories |
+| `gh template search [query]` | Search public template repositories on GitHub |
 | `gh template fetch` | Fetch a template's recommended manifest locally for review |
 | `gh template explain [field]` | Show descriptions for all `template-metadata.yml` fields |
 
 ## Usage
+
+### Listing and discovering templates
+
+**Your templates** (repos you own marked as templates):
+```sh
+gh template list
+gh template list --include-orgs   # also includes organisation templates
+```
+
+**Discover community templates** (public repos on GitHub):
+```sh
+gh template search go cli
+gh template search starter language:go
+gh template search                # most starred public templates
+gh template search --limit 50     # up to 100 results
+```
+
+Once you find a template you want to use, fetch its manifest and create:
+```sh
+gh template fetch --repo owner/my-template
+gh template create my-new-repo --manifest ./template-metadata.yml
+# or in one step:
+gh template create my-new-repo --manifest owner/my-template
+```
 
 ### Creating a repository from a template
 

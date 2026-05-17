@@ -1,0 +1,75 @@
+package cmd
+
+import (
+	"fmt"
+	"os"
+	"text/tabwriter"
+
+	ghapi "github.com/rpothin/gh-template/internal/github"
+	"github.com/rpothin/gh-template/internal/ui"
+	"github.com/spf13/cobra"
+)
+
+var listIncludeOrgs bool
+
+var listCmd = &cobra.Command{
+	Use:          "list",
+	Short:        "List your template repositories",
+	Long: `Lists template repositories owned by the authenticated user.
+
+These are the repositories marked as templates that appear in GitHub's
+"Choose a template" picker when creating a new repository.
+
+Use --include-orgs to also include template repositories from all
+organisations you belong to.`,
+	Args:         cobra.NoArgs,
+	SilenceUsage: true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		client, err := ghapi.NewRESTClient()
+		if err != nil {
+			return err
+		}
+
+		ui.Info("Fetching your template repositories...")
+		repos, err := ghapi.ListOwnedTemplateRepos(client)
+		if err != nil {
+			return err
+		}
+
+		if listIncludeOrgs {
+			ui.Info("Fetching organisation template repositories...")
+			orgRepos, err := ghapi.ListOrgTemplateRepos(client, func(msg string) {
+				ui.Warning("%s", msg)
+			})
+			if err != nil {
+				return err
+			}
+			repos = append(repos, orgRepos...)
+		}
+
+		if len(repos) == 0 {
+			ui.Info("No template repositories found.")
+			return nil
+		}
+
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+		fmt.Fprintln(w, "REPO\tVISIBILITY\tDESCRIPTION")
+		fmt.Fprintln(w, "----\t----------\t-----------")
+		for _, r := range repos {
+			desc := r.Description
+			if desc == "" {
+				desc = "-"
+			}
+			fmt.Fprintf(w, "%s\t%s\t%s\n", r.FullName, r.Visibility, desc)
+		}
+		w.Flush()
+
+		ui.Info("Found %d template repository(ies).", len(repos))
+		return nil
+	},
+}
+
+func init() {
+	listCmd.Flags().BoolVar(&listIncludeOrgs, "include-orgs", false, "Also list template repositories from your organisations")
+	rootCmd.AddCommand(listCmd)
+}

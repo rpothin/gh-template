@@ -30,6 +30,7 @@ type RepoInfo struct {
 	AllowAutoMerge             bool             `json:"allow_auto_merge"`
 	DeleteBranchOnMerge        bool             `json:"delete_branch_on_merge"`
 	AllowUpdateBranch          bool             `json:"allow_update_branch"`
+	IsTemplate                 bool             `json:"is_template"`
 	SecurityAndAnalysis        *SecurityAnalysis `json:"security_and_analysis"`
 }
 
