@@ -11,6 +11,7 @@ import (
 )
 
 var listIncludeOrgs bool
+var listIncludeArchived bool
 
 var listCmd = &cobra.Command{
 	Use:          "list",
@@ -21,7 +22,10 @@ These are the repositories marked as templates that appear in GitHub's
 "Choose a template" picker when creating a new repository.
 
 Use --include-orgs to also include template repositories from all
-organisations you belong to.`,
+organisations you belong to.
+
+Archived template repositories are excluded by default. Use --include-archived
+to include them.`,
 	Args:         cobra.NoArgs,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -31,14 +35,14 @@ organisations you belong to.`,
 		}
 
 		ui.Info("Fetching your template repositories...")
-		repos, err := ghapi.ListOwnedTemplateRepos(client)
+		repos, err := ghapi.ListOwnedTemplateRepos(client, listIncludeArchived)
 		if err != nil {
 			return err
 		}
 
 		if listIncludeOrgs {
 			ui.Info("Fetching organisation template repositories...")
-			orgRepos, err := ghapi.ListOrgTemplateRepos(client, func(msg string) {
+			orgRepos, err := ghapi.ListOrgTemplateRepos(client, listIncludeArchived, func(msg string) {
 				ui.Warning("%s", msg)
 			})
 			if err != nil {
@@ -71,5 +75,6 @@ organisations you belong to.`,
 
 func init() {
 	listCmd.Flags().BoolVar(&listIncludeOrgs, "include-orgs", false, "Also list template repositories from your organisations")
+	listCmd.Flags().BoolVar(&listIncludeArchived, "include-archived", false, "Include archived template repositories")
 	rootCmd.AddCommand(listCmd)
 }

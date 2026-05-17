@@ -39,11 +39,13 @@ type userRepoPage struct {
 	Visibility  string `json:"visibility"`
 	Private     bool   `json:"private"`
 	IsTemplate  bool   `json:"is_template"`
+	Archived    bool   `json:"archived"`
 }
 
 // ListOwnedTemplateRepos fetches all template repositories owned by the
-// authenticated user (type=owner, all pages).
-func ListOwnedTemplateRepos(client *gogithub.RESTClient) ([]TemplateSummary, error) {
+// authenticated user (type=owner, all pages). When includeArchived is false,
+// archived repositories are excluded from the results.
+func ListOwnedTemplateRepos(client *gogithub.RESTClient, includeArchived bool) ([]TemplateSummary, error) {
 	const perPage = 100
 	var results []TemplateSummary
 
@@ -54,7 +56,7 @@ func ListOwnedTemplateRepos(client *gogithub.RESTClient) ([]TemplateSummary, err
 			return nil, fmt.Errorf("listing user repositories (page %d): %w", page, err)
 		}
 		for _, r := range repos {
-			if r.IsTemplate {
+			if r.IsTemplate && (includeArchived || !r.Archived) {
 				results = append(results, TemplateSummary{
 					FullName:    r.FullName,
 					Description: r.Description,
@@ -79,8 +81,9 @@ type orgSummary struct {
 // ListOrgTemplateRepos fetches template repositories from all organisations the
 // authenticated user belongs to. It uses a bounded pool of 4 concurrent
 // workers. If fetching repos for an specific org fails, warningFn is called
-// with the error message and that org is skipped.
-func ListOrgTemplateRepos(client *gogithub.RESTClient, warningFn func(string)) ([]TemplateSummary, error) {
+// with the error message and that org is skipped. When includeArchived is
+// false, archived repositories are excluded from the results.
+func ListOrgTemplateRepos(client *gogithub.RESTClient, includeArchived bool, warningFn func(string)) ([]TemplateSummary, error) {
 	var orgs []orgSummary
 	if err := client.Get("user/orgs?per_page=100", &orgs); err != nil {
 		return nil, fmt.Errorf("listing user organisations: %w", err)
@@ -106,7 +109,7 @@ func ListOrgTemplateRepos(client *gogithub.RESTClient, warningFn func(string)) (
 		go func() {
 			defer wg.Done()
 			for orgLogin := range jobs {
-				repos, err := fetchOrgTemplates(client, orgLogin)
+				repos, err := fetchOrgTemplates(client, orgLogin, includeArchived)
 				results <- orgResult{repos: repos, err: err, org: orgLogin}
 			}
 		}()
@@ -135,7 +138,7 @@ func ListOrgTemplateRepos(client *gogithub.RESTClient, warningFn func(string)) (
 	return all, nil
 }
 
-func fetchOrgTemplates(client *gogithub.RESTClient, orgLogin string) ([]TemplateSummary, error) {
+func fetchOrgTemplates(client *gogithub.RESTClient, orgLogin string, includeArchived bool) ([]TemplateSummary, error) {
 	const perPage = 100
 	var results []TemplateSummary
 	for page := 1; ; page++ {
@@ -145,7 +148,7 @@ func fetchOrgTemplates(client *gogithub.RESTClient, orgLogin string) ([]Template
 			return nil, err
 		}
 		for _, r := range repos {
-			if r.IsTemplate {
+			if r.IsTemplate && (includeArchived || !r.Archived) {
 				results = append(results, TemplateSummary{
 					FullName:    r.FullName,
 					Description: r.Description,
@@ -175,12 +178,15 @@ type searchRepoItem struct {
 	Visibility  string `json:"visibility"`
 	Private     bool   `json:"private"`
 	StarCount   int    `json:"stargazers_count"`
+	Archived    bool   `json:"archived"`
 }
 
 // SearchTemplateRepos searches public template repositories using the GitHub
 // Search API. query is appended to the mandatory "template:true" qualifier.
+// When includeArchived is false, "archived:false" is added to the query so the
+// API filters archived repositories server-side.
 // If incomplete_results is returned by the API, warnFn (if non-nil) is called.
-func SearchTemplateRepos(client *gogithub.RESTClient, query string, limit int, warnFn func(string)) ([]TemplateSummary, error) {
+func SearchTemplateRepos(client *gogithub.RESTClient, query string, limit int, includeArchived bool, warnFn func(string)) ([]TemplateSummary, error) {
 	if limit <= 0 {
 		limit = 30
 	}
@@ -189,6 +195,9 @@ func SearchTemplateRepos(client *gogithub.RESTClient, query string, limit int, w
 	}
 
 	q := "template:true"
+	if !includeArchived {
+		q += " archived:false"
+	}
 	if trimmed := strings.TrimSpace(query); trimmed != "" {
 		q += " " + trimmed
 	}

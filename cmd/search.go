@@ -12,6 +12,7 @@ import (
 )
 
 var searchLimit int
+var searchIncludeArchived bool
 
 var searchCmd = &cobra.Command{
 	Use:   "search [query]",
@@ -26,7 +27,10 @@ GitHub repository search qualifiers as part of the query:
   gh template search org:github
 
 Results are sorted by star count (descending). Use --limit to control
-how many results are returned (default: 30, max: 100).`,
+how many results are returned (default: 30, max: 100).
+
+Archived template repositories are excluded by default. Use --include-archived
+to include them.`,
 	Args:         cobra.ArbitraryArgs,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -43,7 +47,7 @@ how many results are returned (default: 30, max: 100).`,
 			ui.Info("Searching for template repositories matching %q...", query)
 		}
 
-		repos, err := ghapi.SearchTemplateRepos(client, query, searchLimit, func(msg string) {
+		repos, err := ghapi.SearchTemplateRepos(client, query, searchLimit, searchIncludeArchived, func(msg string) {
 			ui.Warning("%s", msg)
 		})
 		if err != nil {
@@ -74,5 +78,6 @@ how many results are returned (default: 30, max: 100).`,
 
 func init() {
 	searchCmd.Flags().IntVar(&searchLimit, "limit", 30, "Maximum number of results to return (max 100)")
+	searchCmd.Flags().BoolVar(&searchIncludeArchived, "include-archived", false, "Include archived template repositories")
 	rootCmd.AddCommand(searchCmd)
 }
