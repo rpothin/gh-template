@@ -149,11 +149,32 @@ var (
 var auditCmd = &cobra.Command{
 	Use:   "audit --repo <owner/repo> [--manifest <path>]",
 	Short: "Audit a repository against a template manifest",
-	Long: `Compares the live GitHub repository settings against a local manifest file,
-visually detailing any configuration drift.
+	Long: `Compare the live GitHub repository settings against a template manifest,
+highlighting any configuration drift.
 
-Use --format json to get a machine-readable report suitable for CI pipelines:
-  gh template audit --repo owner/repo --format json | ConvertFrom-Json`,
+Drift is any setting where the live value differs from the manifest value. Each
+section — settings, topics, environments, actions permissions, variables,
+secrets, and security — is checked independently and results are printed as
+they are fetched.
+
+Use --format json to get a machine-readable report suitable for CI pipelines
+and automated drift detection. A non-zero exit code is returned when drift is
+detected, regardless of output format.
+
+To apply the manifest settings to a drifted repository, run:
+  gh template sync --repo owner/repo`,
+	Example: `  # Audit a repository against the default manifest
+  $ gh template audit --repo owner/my-repo
+
+  # Audit using a manifest from a specific path
+  $ gh template audit --repo owner/my-repo --manifest ./configs/template.yml
+
+  # Get a machine-readable JSON report for CI
+  $ gh template audit --repo owner/my-repo --format json
+
+  # Check for drift and sync if needed
+  $ gh template audit --repo owner/my-repo && echo "No drift"
+  $ gh template sync --repo owner/my-repo`,
 	Args:         cobra.NoArgs,
 	SilenceUsage: true,
 	Run: func(cmd *cobra.Command, args []string) {

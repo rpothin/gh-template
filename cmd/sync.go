@@ -19,8 +19,33 @@ var (
 )
 
 var syncCmd = &cobra.Command{
-	Use:   "sync",
+	Use:   "sync --repo <owner/repo> [--manifest <path>]",
 	Short: "Sync repository settings from a template manifest",
+	Long: `Sync repository settings from a template manifest into an existing repository.
+
+Re-applies the same configuration that 'gh template create' applies, making it
+useful for propagating template updates to repositories that were already created
+from the template.
+
+Some fields are treated as seed-only and will not overwrite values the repository
+owner may have customised:
+
+  settings.description  — preserved if the repository already has a description
+  topics                — preserved if the repository already has topics set
+
+All other settings (environments, actions permissions, variables, secrets, and
+security) are unconditionally overwritten with the manifest values.
+
+To check for drift before syncing, run:
+  gh template audit --repo owner/repo
+
+To capture updated settings from your template repository, run:
+  gh template snapshot --repo owner/template-repo`,
+	Example: `  # Sync a repository using the default manifest path (./template-metadata.yml)
+  $ gh template sync --repo owner/my-repo
+
+  # Sync using a manifest from a specific path
+  $ gh template sync --repo owner/my-repo --manifest ./configs/template.yml`,
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if syncRepo == "" {

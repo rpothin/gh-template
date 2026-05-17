@@ -17,9 +17,17 @@ var explainCmd = &cobra.Command{
 	Short: "Show descriptions for all template-metadata.yml fields",
 	Long: `Display descriptions for the fields used in template-metadata.yml.
 
-Run without arguments to see the full reference table.
+Run without arguments to see the full reference table of all fields.
 Use --all to see detailed descriptions for every field at once.
-Provide a field name to see its detailed description and an example.`,
+Provide a field name to see its detailed description and an example value.`,
+	Example: `  # Show the reference table for all manifest fields
+  $ gh template explain
+
+  # Show detailed description and example for a specific field
+  $ gh template explain visibility
+
+  # Show detailed descriptions for all fields at once
+  $ gh template explain --all`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if explainAll {

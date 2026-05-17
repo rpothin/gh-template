@@ -20,9 +20,36 @@ var (
 )
 
 var snapshotCmd = &cobra.Command{
-	Use:   "snapshot",
+	Use:   "snapshot --repo <owner/repo> [--output <path>]",
 	Short: "Snapshot a repository's settings into YAML",
-	Args:  cobra.NoArgs,
+	Long: `Capture the live settings of a GitHub repository into a template-metadata.yml
+manifest file.
+
+The snapshot captures: repository settings, topics, environments, actions
+permissions, variable names and values, secret names, and security configuration.
+All eight data sources are fetched in parallel for speed.
+
+Secret values are not captured — only their names appear in the snapshot. You
+will need to populate secret values manually before using the manifest with
+'gh template create' or 'gh template sync'.
+
+If no --output path is specified, the YAML is printed to standard output.
+If --output points to an existing directory, the file is written as
+template-metadata.yml inside that directory.
+
+Use the snapshot as a starting point for a template manifest:
+  - Remove or generalise repository-specific values
+  - Add the file to your template repository as template-metadata.yml
+  - Use it to provision new repositories with 'gh template create'`,
+	Example: `  # Print the snapshot to stdout
+  $ gh template snapshot --repo owner/my-template
+
+  # Write the snapshot to a file
+  $ gh template snapshot --repo owner/my-template --output ./template-metadata.yml
+
+  # Write the snapshot into a directory (creates template-metadata.yml inside)
+  $ gh template snapshot --repo owner/my-template --output ./configs/`,
+	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if snapshotRepo == "" {
 			return fmt.Errorf("--repo is required")

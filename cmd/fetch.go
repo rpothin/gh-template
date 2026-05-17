@@ -17,19 +17,29 @@ var (
 )
 
 var fetchCmd = &cobra.Command{
-	Use:   "fetch",
+	Use:   "fetch --repo <owner/repo> [--output <path>]",
 	Short: "Fetch a template manifest from a repository",
-	Long: `Fetches template-metadata.yml from the root of the given repository
-and writes it to a local file for inspection and customisation before use.
+	Long: `Fetch template-metadata.yml from the root of the given repository and write it
+to a local file for inspection and customisation before use.
 
-This is useful when a template maintainer has shipped a recommended
-template-metadata.yml alongside their template repository and you want
-to review or tweak it before running 'gh template create'.
+This is useful when a template maintainer has published a recommended manifest
+alongside their template repository and you want to review or tweak it before
+provisioning a new repository.
 
-Example workflow:
-  gh template fetch --repo owner/my-template
-  # review / edit ./template-metadata.yml
+If no --output path is specified, the manifest is written to
+template-metadata.yml in the current directory.
+
+To create a repository using the fetched manifest, run:
   gh template create my-new-repo --manifest ./template-metadata.yml`,
+	Example: `  # Fetch the manifest from a template repository
+  $ gh template fetch --repo owner/my-template
+
+  # Fetch and save to a custom path
+  $ gh template fetch --repo owner/my-template --output ./configs/template.yml
+
+  # Typical workflow: fetch, review, then create
+  $ gh template fetch --repo owner/my-template
+  $ gh template create my-new-repo`,
 	Args:         cobra.NoArgs,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {

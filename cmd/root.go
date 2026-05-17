@@ -20,6 +20,20 @@ Capture supported settings from an existing repository, then:
 
 Works best when one template repository is the source of truth for a family of
 related repositories.`,
+	Example: `  # Capture settings from your template repository
+  $ gh template snapshot --repo owner/my-template --output ./template-metadata.yml
+
+  # Create a new repository from the template
+  $ gh template create my-new-repo
+
+  # Audit a derived repository for configuration drift
+  $ gh template audit --repo owner/my-new-repo
+
+  # Sync the latest template settings into a derived repository
+  $ gh template sync --repo owner/my-new-repo
+
+  # Explore public template repositories
+  $ gh template search go cli`,
 }
 
 // Execute runs the root cobra command.
