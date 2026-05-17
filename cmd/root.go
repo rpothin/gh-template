@@ -8,13 +8,18 @@ import (
 
 var rootCmd = &cobra.Command{
 	Use:   "template",
-	Short: "Manage GitHub repositories with configuration templates",
-	Long: `gh-template is a GitHub CLI extension for individual developers.
+	Short: "Create configured repositories and keep them in sync with a template",
+	Long: `GitHub template repositories copy files, but not settings, topics,
+environments, or other repository configuration. gh-template bridges that gap
+with a template-metadata.yml manifest.
 
-It eliminates "ClickOps" by fully establishing repository configurations
-(topics, features, environments) during creation, auditing live repositories
-for settings drift, and snapshotting optimal configurations into shareable
-YAML definitions.`,
+Capture supported settings from an existing repository, then:
+  - create repositories with configuration applied from day one
+  - audit derived repositories for drift against the template manifest
+  - sync template configuration updates into derived repositories
+
+Works best when one template repository is the source of truth for a family of
+related repositories.`,
 }
 
 // Execute runs the root cobra command.
