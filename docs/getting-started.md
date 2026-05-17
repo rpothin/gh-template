@@ -40,10 +40,14 @@ gh template create my-new-repo --manifest ./template-metadata.yml
 applies the configured settings, topics, environments, Actions permissions,
 variables, secrets, and security settings.
 
-To create the repository as private:
+Repository visibility is controlled by the `settings.visibility` field in the
+manifest. If the field is omitted, the repository is created as public.
+
+To create the repository under a specific owner (user or organisation), use the
+`OWNER/REPO` argument format:
 
 ```sh
-gh template create my-new-repo --manifest ./template-metadata.yml --private
+gh template create owner/my-new-repo --manifest ./template-metadata.yml
 ```
 
 You can also point `--manifest` at a repository that contains

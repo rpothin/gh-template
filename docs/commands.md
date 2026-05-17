@@ -15,22 +15,29 @@ help. This page lists every command and flag.
 Create a repository from a template manifest.
 
 ```sh
-gh template create <name> [flags]
+gh template create <name-or-owner/repo> [flags]
 ```
+
+The argument can be a plain repository name (uses the authenticated user as
+owner) or an `OWNER/REPO` reference to create the repository under a specific
+owner (user or organisation).
+
+Repository visibility is controlled by the `settings.visibility` field in the
+manifest. If the field is omitted, the repository is created as public.
 
 Flags:
 
 | Flag | Default | Description |
 |---|---|---|
 | `-m, --manifest <path-or-owner/repo>` | `./template-metadata.yml` | Local manifest path or repository reference containing `template-metadata.yml`. |
-| `--private` | `false` | Create the new repository as private. |
 
 Examples:
 
 ```sh
+gh template create my-new-repo
 gh template create my-new-repo --manifest ./template-metadata.yml
+gh template create owner/my-new-repo --manifest ./template-metadata.yml
 gh template create my-new-repo --manifest owner/template-repo
-gh template create my-new-repo --manifest ./template-metadata.yml --private
 ```
 
 ## `snapshot`

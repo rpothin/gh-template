@@ -13,10 +13,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var (
-	createManifestPath string
-	createPrivate      bool
-)
+var createManifestPath string
 
 type environmentResult struct {
 	name     string
@@ -41,11 +38,19 @@ func isRepoRef(s string) bool {
 }
 
 var createCmd = &cobra.Command{
-	Use:   "create <name>",
+	Use:   "create <name-or-owner/repo>",
 	Short: "Create a repository from a template",
-	Args:  cobra.ExactArgs(1),
+	Long: `Create a repository from a template manifest.
+
+The argument can be a plain repository name (uses the authenticated user as
+owner) or an OWNER/REPO reference to create the repository under a specific
+owner (user or organisation).
+
+Repository visibility is controlled by the settings.visibility field in the
+manifest. If the field is omitted, the repository is created as public.`,
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		name := args[0]
+		arg := args[0]
 
 		client, err := github.NewRESTClient()
 		if err != nil {
@@ -85,14 +90,29 @@ var createCmd = &cobra.Command{
 			return fmt.Errorf("invalid template field in manifest: %w", err)
 		}
 
-		owner, err := github.GetAuthenticatedUser(client)
-		if err != nil {
-			return err
+		// Parse the repository target: OWNER/REPO or just REPO (uses the
+		// authenticated user as owner).
+		var owner, repoName string
+		if strings.Contains(arg, "/") {
+			owner, repoName, err = util.ParseOwnerRepo(arg)
+			if err != nil {
+				return fmt.Errorf("invalid repository reference %q: %w", arg, err)
+			}
+		} else {
+			repoName = arg
+			owner, err = github.GetAuthenticatedUser(client)
+			if err != nil {
+				return err
+			}
 		}
 
-		ui.Info("Creating repository %s/%s from template %s/%s...", owner, name, templateOwner, templateRepo)
+		// Derive the private flag from the manifest visibility.
+		// Empty visibility defaults to public (false).
+		private := manifest.Settings.Visibility == "private" || manifest.Settings.Visibility == "internal"
 
-		repo, err := github.CreateFromTemplate(client, templateOwner, templateRepo, owner, name, createPrivate)
+		ui.Info("Creating repository %s/%s from template %s/%s...", owner, repoName, templateOwner, templateRepo)
+
+		repo, err := github.CreateFromTemplate(client, templateOwner, templateRepo, owner, repoName, private)
 		if err != nil {
 			ui.Error("Failed to create repository: %v", err)
 			os.Exit(1)
@@ -103,7 +123,7 @@ var createCmd = &cobra.Command{
 		var errs []error
 
 		ui.Header("Settings:")
-		if err := github.UpdateRepository(client, owner, name, manifest.Settings); err != nil {
+		if err := github.UpdateRepository(client, owner, repoName, manifest.Settings); err != nil {
 			ui.Error("Failed to apply repository settings: %v", err)
 			errs = append(errs, err)
 		} else {
@@ -113,7 +133,7 @@ var createCmd = &cobra.Command{
 		ui.Header("Topics:")
 		if manifest.Topics == nil {
 			ui.Info("No topics configured, skipping.")
-		} else if err := github.SetTopics(client, owner, name, manifest.Topics); err != nil {
+		} else if err := github.SetTopics(client, owner, repoName, manifest.Topics); err != nil {
 			ui.Error("Failed to set topics: %v", err)
 			errs = append(errs, err)
 		} else {
@@ -138,7 +158,7 @@ var createCmd = &cobra.Command{
 				go func() {
 					defer wg.Done()
 					for env := range envCh {
-						warns, err := github.CreateOrUpdateEnvironment(client, owner, name, env)
+						warns, err := github.CreateOrUpdateEnvironment(client, owner, repoName, env)
 						resultCh <- environmentResult{
 							name:     env.Name,
 							warnings: warns,
@@ -172,7 +192,7 @@ var createCmd = &cobra.Command{
 		ui.Header("Actions:")
 		if manifest.Actions == nil {
 			ui.Info("No actions permissions configured, skipping.")
-		} else if err := github.UpdateActionsPermissions(client, owner, name, manifest.Actions); err != nil {
+		} else if err := github.UpdateActionsPermissions(client, owner, repoName, manifest.Actions); err != nil {
 			ui.Error("Failed to apply actions permissions: %v", err)
 			errs = append(errs, err)
 		} else {
@@ -182,7 +202,7 @@ var createCmd = &cobra.Command{
 		ui.Header("Variables:")
 		if len(manifest.Variables) == 0 {
 			ui.Success("No repository variables to apply")
-		} else if err := github.ApplyRepoVariables(client, owner, name, manifest.Variables); err != nil {
+		} else if err := github.ApplyRepoVariables(client, owner, repoName, manifest.Variables); err != nil {
 			ui.Error("Failed to apply repository variables: %v", err)
 			errs = append(errs, err)
 		} else {
@@ -193,7 +213,7 @@ var createCmd = &cobra.Command{
 		if len(manifest.Secrets) == 0 {
 			ui.Success("No repository secrets to apply")
 		} else {
-			warns, err := github.ApplyRepoSecrets(client, owner, name, manifest.Secrets)
+			warns, err := github.ApplyRepoSecrets(client, owner, repoName, manifest.Secrets)
 			if err != nil {
 				ui.Error("Failed to apply repository secrets: %v", err)
 				errs = append(errs, err)
@@ -208,7 +228,7 @@ var createCmd = &cobra.Command{
 		ui.Header("Security:")
 		if manifest.Security == nil {
 			ui.Info("No security settings configured, skipping.")
-		} else if err := github.UpdateSecuritySettings(client, owner, name, manifest.Security); err != nil {
+		} else if err := github.UpdateSecuritySettings(client, owner, repoName, manifest.Security); err != nil {
 			ui.Error("Failed to apply security settings: %v", err)
 			errs = append(errs, err)
 		} else {
@@ -227,6 +247,5 @@ var createCmd = &cobra.Command{
 
 func init() {
 	createCmd.Flags().StringVarP(&createManifestPath, "manifest", "m", "./template-metadata.yml", "Path to the template manifest file")
-	createCmd.Flags().BoolVar(&createPrivate, "private", false, "Create as a private repository")
 	rootCmd.AddCommand(createCmd)
 }
