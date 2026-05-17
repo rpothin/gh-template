@@ -305,8 +305,7 @@ func listRepoSecrets(client *gogithub.RESTClient, owner, repo string) ([]secretR
 }
 
 // GetRepoSecretNames fetches the names of all Actions secrets for a repository.
-// Secret values are never returned by the API; the Value field is always set
-// to SecretPlaceholder.
+// Secret values are never returned by the GitHub API, so Value is left empty.
 func GetRepoSecretNames(client *gogithub.RESTClient, owner, repo string) ([]config.EnvironmentSecret, error) {
 	secretNames, err := listRepoSecrets(client, owner, repo)
 	if err != nil {
@@ -317,7 +316,7 @@ func GetRepoSecretNames(client *gogithub.RESTClient, owner, repo string) ([]conf
 	}
 	secrets := make([]config.EnvironmentSecret, len(secretNames))
 	for i, s := range secretNames {
-		secrets[i] = config.EnvironmentSecret{Name: s.Name, Value: config.SecretPlaceholder}
+		secrets[i] = config.EnvironmentSecret{Name: s.Name}
 	}
 	return secrets, nil
 }
