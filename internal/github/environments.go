@@ -288,14 +288,16 @@ func CreateOrUpdateEnvironment(client *gogithub.RESTClient, owner, repo string, 
 	}
 
 	// Build protection-rules payload (full replacement via PUT).
-	preventSelfReview := false
-	if env.PreventSelfReview != nil {
-		preventSelfReview = *env.PreventSelfReview
-	}
-	payload := map[string]interface{}{
-		"wait_timer":          env.WaitTimer,
-		"prevent_self_review": preventSelfReview,
-		"reviewers":           reviewerRefs,
+	// Only include protection-rule fields when at least one is non-default.
+	// Sending them with zero/false/empty values triggers a protection-rule
+	// creation attempt on the GitHub API, which fails with 422 on free-plan
+	// private repositories.
+	preventSelfReview := env.PreventSelfReview != nil && *env.PreventSelfReview
+	payload := map[string]interface{}{}
+	if env.WaitTimer > 0 || preventSelfReview || len(reviewerRefs) > 0 {
+		payload["wait_timer"] = env.WaitTimer
+		payload["prevent_self_review"] = preventSelfReview
+		payload["reviewers"] = reviewerRefs
 	}
 	switch env.DeploymentBranchPolicy {
 	case "protected":
