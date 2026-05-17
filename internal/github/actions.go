@@ -2,6 +2,7 @@ package github
 
 import (
 	"fmt"
+	"net/url"
 	"sync"
 
 	gogithub "github.com/cli/go-gh/v2/pkg/api"
@@ -47,14 +48,20 @@ func GetActionsPermissions(client *gogithub.RESTClient, owner, repo string) (*co
 
 	go func() {
 		defer wg.Done()
-		if err := client.Get(fmt.Sprintf("repos/%s/%s/actions/permissions", owner, repo), &ap); err != nil {
+		if err := client.Get(
+			fmt.Sprintf("repos/%s/%s/actions/permissions", url.PathEscape(owner), url.PathEscape(repo)),
+			&ap,
+		); err != nil {
 			setErr(fmt.Errorf("fetching actions permissions for %s/%s: %w", owner, repo, err))
 		}
 	}()
 
 	go func() {
 		defer wg.Done()
-		if err := client.Get(fmt.Sprintf("repos/%s/%s/actions/permissions/workflow", owner, repo), &wp); err != nil {
+		if err := client.Get(
+			fmt.Sprintf("repos/%s/%s/actions/permissions/workflow", url.PathEscape(owner), url.PathEscape(repo)),
+			&wp,
+		); err != nil {
 			setErr(fmt.Errorf("fetching workflow permissions for %s/%s: %w", owner, repo, err))
 		}
 	}()
@@ -82,8 +89,8 @@ func UpdateActionsPermissions(client *gogithub.RESTClient, owner, repo string, s
 	}
 
 	var (
-		wg      sync.WaitGroup
-		mu      sync.Mutex
+		wg       sync.WaitGroup
+		mu       sync.Mutex
 		applyErr error
 	)
 
@@ -123,7 +130,10 @@ func UpdateActionsPermissions(client *gogithub.RESTClient, owner, repo string, s
 // value while preserving the existing enabled and allowed_actions fields.
 func applyShaPinning(client *gogithub.RESTClient, owner, repo string, pinningRequired bool) error {
 	var current repoActionsPermissions
-	if err := client.Get(fmt.Sprintf("repos/%s/%s/actions/permissions", owner, repo), &current); err != nil {
+	if err := client.Get(
+		fmt.Sprintf("repos/%s/%s/actions/permissions", url.PathEscape(owner), url.PathEscape(repo)),
+		&current,
+	); err != nil {
 		return fmt.Errorf("reading actions permissions for %s/%s: %w", owner, repo, err)
 	}
 
@@ -140,7 +150,11 @@ func applyShaPinning(client *gogithub.RESTClient, owner, repo string, pinningReq
 		return err
 	}
 	var result interface{}
-	if err := client.Put(fmt.Sprintf("repos/%s/%s/actions/permissions", owner, repo), body, &result); err != nil {
+	if err := client.Put(
+		fmt.Sprintf("repos/%s/%s/actions/permissions", url.PathEscape(owner), url.PathEscape(repo)),
+		body,
+		&result,
+	); err != nil {
 		return fmt.Errorf("updating actions permissions for %s/%s: %w", owner, repo, err)
 	}
 	return nil
@@ -160,7 +174,11 @@ func applyWorkflowPermissions(client *gogithub.RESTClient, owner, repo string, s
 		return err
 	}
 	var result interface{}
-	if err := client.Put(fmt.Sprintf("repos/%s/%s/actions/permissions/workflow", owner, repo), body, &result); err != nil {
+	if err := client.Put(
+		fmt.Sprintf("repos/%s/%s/actions/permissions/workflow", url.PathEscape(owner), url.PathEscape(repo)),
+		body,
+		&result,
+	); err != nil {
 		return fmt.Errorf("updating workflow permissions for %s/%s: %w", owner, repo, err)
 	}
 	return nil
@@ -168,17 +186,43 @@ func applyWorkflowPermissions(client *gogithub.RESTClient, owner, repo string, s
 
 // ─── Repo-level variables ─────────────────────────────────────────────────────
 
+func listRepoVariables(client *gogithub.RESTClient, owner, repo string) ([]variableResponse, error) {
+	const perPage = 100
+
+	var variables []variableResponse
+	for page := 1; ; page++ {
+		var result variablesListResponse
+		if err := client.Get(
+			fmt.Sprintf(
+				"repos/%s/%s/actions/variables?per_page=%d&page=%d",
+				url.PathEscape(owner),
+				url.PathEscape(repo),
+				perPage,
+				page,
+			),
+			&result,
+		); err != nil {
+			return nil, fmt.Errorf("fetching Actions variables for %s/%s (page %d): %w", owner, repo, page, err)
+		}
+		variables = append(variables, result.Variables...)
+		if len(result.Variables) < perPage {
+			break
+		}
+	}
+	return variables, nil
+}
+
 // GetRepoVariables fetches all Actions variables for a repository.
 func GetRepoVariables(client *gogithub.RESTClient, owner, repo string) ([]config.EnvironmentVariable, error) {
-	var result variablesListResponse
-	if err := client.Get(fmt.Sprintf("repos/%s/%s/actions/variables", owner, repo), &result); err != nil {
-		return nil, fmt.Errorf("fetching Actions variables for %s/%s: %w", owner, repo, err)
+	variables, err := listRepoVariables(client, owner, repo)
+	if err != nil {
+		return nil, err
 	}
-	if len(result.Variables) == 0 {
+	if len(variables) == 0 {
 		return nil, nil
 	}
-	vars := make([]config.EnvironmentVariable, len(result.Variables))
-	for i, v := range result.Variables {
+	vars := make([]config.EnvironmentVariable, len(variables))
+	for i, v := range variables {
 		vars[i] = config.EnvironmentVariable{Name: v.Name, Value: v.Value}
 	}
 	return vars, nil
@@ -190,13 +234,13 @@ func ApplyRepoVariables(client *gogithub.RESTClient, owner, repo string, vars []
 		return nil
 	}
 
-	var existing variablesListResponse
-	if err := client.Get(fmt.Sprintf("repos/%s/%s/actions/variables", owner, repo), &existing); err != nil {
-		return fmt.Errorf("fetching Actions variables for %s/%s: %w", owner, repo, err)
+	existingVariables, err := listRepoVariables(client, owner, repo)
+	if err != nil {
+		return err
 	}
 
-	liveNames := make(map[string]struct{}, len(existing.Variables))
-	for _, v := range existing.Variables {
+	liveNames := make(map[string]struct{}, len(existingVariables))
+	for _, v := range existingVariables {
 		liveNames[v.Name] = struct{}{}
 	}
 
@@ -208,15 +252,22 @@ func ApplyRepoVariables(client *gogithub.RESTClient, owner, repo string, vars []
 		var result interface{}
 		if _, exists := liveNames[v.Name]; exists {
 			if err := client.Patch(
-				fmt.Sprintf("repos/%s/%s/actions/variables/%s", owner, repo, v.Name),
-				body, &result,
+				fmt.Sprintf(
+					"repos/%s/%s/actions/variables/%s",
+					url.PathEscape(owner),
+					url.PathEscape(repo),
+					url.PathEscape(v.Name),
+				),
+				body,
+				&result,
 			); err != nil {
 				return fmt.Errorf("updating variable %q for %s/%s: %w", v.Name, owner, repo, err)
 			}
 		} else {
 			if err := client.Post(
-				fmt.Sprintf("repos/%s/%s/actions/variables", owner, repo),
-				body, &result,
+				fmt.Sprintf("repos/%s/%s/actions/variables", url.PathEscape(owner), url.PathEscape(repo)),
+				body,
+				&result,
 			); err != nil {
 				return fmt.Errorf("creating variable %q for %s/%s: %w", v.Name, owner, repo, err)
 			}
@@ -227,19 +278,45 @@ func ApplyRepoVariables(client *gogithub.RESTClient, owner, repo string, vars []
 
 // ─── Repo-level secrets ───────────────────────────────────────────────────────
 
+func listRepoSecrets(client *gogithub.RESTClient, owner, repo string) ([]secretResponse, error) {
+	const perPage = 100
+
+	var secrets []secretResponse
+	for page := 1; ; page++ {
+		var result secretsListResponse
+		if err := client.Get(
+			fmt.Sprintf(
+				"repos/%s/%s/actions/secrets?per_page=%d&page=%d",
+				url.PathEscape(owner),
+				url.PathEscape(repo),
+				perPage,
+				page,
+			),
+			&result,
+		); err != nil {
+			return nil, fmt.Errorf("fetching Actions secrets for %s/%s (page %d): %w", owner, repo, page, err)
+		}
+		secrets = append(secrets, result.Secrets...)
+		if len(result.Secrets) < perPage {
+			break
+		}
+	}
+	return secrets, nil
+}
+
 // GetRepoSecretNames fetches the names of all Actions secrets for a repository.
 // Secret values are never returned by the API; the Value field is always set
 // to SecretPlaceholder.
 func GetRepoSecretNames(client *gogithub.RESTClient, owner, repo string) ([]config.EnvironmentSecret, error) {
-	var result secretsListResponse
-	if err := client.Get(fmt.Sprintf("repos/%s/%s/actions/secrets", owner, repo), &result); err != nil {
-		return nil, fmt.Errorf("fetching Actions secrets for %s/%s: %w", owner, repo, err)
+	secretNames, err := listRepoSecrets(client, owner, repo)
+	if err != nil {
+		return nil, err
 	}
-	if len(result.Secrets) == 0 {
+	if len(secretNames) == 0 {
 		return nil, nil
 	}
-	secrets := make([]config.EnvironmentSecret, len(result.Secrets))
-	for i, s := range result.Secrets {
+	secrets := make([]config.EnvironmentSecret, len(secretNames))
+	for i, s := range secretNames {
 		secrets[i] = config.EnvironmentSecret{Name: s.Name, Value: config.SecretPlaceholder}
 	}
 	return secrets, nil
@@ -253,13 +330,13 @@ func ApplyRepoSecrets(client *gogithub.RESTClient, owner, repo string, secrets [
 		return nil, nil
 	}
 
-	var existing secretsListResponse
-	if err := client.Get(fmt.Sprintf("repos/%s/%s/actions/secrets", owner, repo), &existing); err != nil {
-		return nil, fmt.Errorf("fetching Actions secrets for %s/%s: %w", owner, repo, err)
+	existingSecrets, err := listRepoSecrets(client, owner, repo)
+	if err != nil {
+		return nil, err
 	}
 
-	liveNames := make(map[string]struct{}, len(existing.Secrets))
-	for _, s := range existing.Secrets {
+	liveNames := make(map[string]struct{}, len(existingSecrets))
+	for _, s := range existingSecrets {
 		liveNames[s.Name] = struct{}{}
 	}
 
@@ -292,8 +369,14 @@ func ApplyRepoSecrets(client *gogithub.RESTClient, owner, repo string, secrets [
 		}
 		var result interface{}
 		if err := client.Put(
-			fmt.Sprintf("repos/%s/%s/actions/secrets/%s", owner, repo, s.Name),
-			body, &result,
+			fmt.Sprintf(
+				"repos/%s/%s/actions/secrets/%s",
+				url.PathEscape(owner),
+				url.PathEscape(repo),
+				url.PathEscape(s.Name),
+			),
+			body,
+			&result,
 		); err != nil {
 			return nil, fmt.Errorf("creating secret %q for %s/%s: %w", s.Name, owner, repo, err)
 		}
@@ -305,7 +388,7 @@ func ApplyRepoSecrets(client *gogithub.RESTClient, owner, repo string, secrets [
 func getRepoPublicKey(client *gogithub.RESTClient, owner, repo string) (publicKeyResponse, error) {
 	var pk publicKeyResponse
 	if err := client.Get(
-		fmt.Sprintf("repos/%s/%s/actions/secrets/public-key", owner, repo),
+		fmt.Sprintf("repos/%s/%s/actions/secrets/public-key", url.PathEscape(owner), url.PathEscape(repo)),
 		&pk,
 	); err != nil {
 		return publicKeyResponse{}, fmt.Errorf("fetching public key for %s/%s: %w", owner, repo, err)

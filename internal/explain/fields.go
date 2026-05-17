@@ -103,13 +103,14 @@ var Fields = []FieldDef{
 		Name:    "pull_request_creation_policy",
 		Section: SectionSettings,
 		Type:    "string",
-		Short:   `Who can open pull requests: "all" | "collaborators_only"`,
+		Short:   `Who can open pull requests: "collaborators_only" | "contributors_only" | "all_users" | "any_user"`,
 		Long: "In the GitHub UI: Settings → General → Pull Requests → Pull request creation.\n\n" +
 			"Controls who is allowed to open pull requests against this repository:\n" +
-			"  all                — any GitHub user can open a pull request (default for public repos)\n" +
-			"  collaborators_only — only repository collaborators can open pull requests\n\n" +
-			"Setting this to \"collaborators_only\" reduces noise from external contributors\n" +
-			"while still allowing forks and issues.",
+			"  collaborators_only — only repository collaborators can open pull requests\n" +
+			"  contributors_only  — collaborators and prior contributors can open pull requests\n" +
+			"  all_users          — any signed-in GitHub user can open pull requests\n" +
+			"  any_user           — any user can open pull requests\n\n" +
+			"Choose the narrowest policy that still matches how you accept contributions.",
 		DocsURL: "https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/managing-repository-settings",
 		Example: "settings:\n  pull_request_creation_policy: collaborators_only",
 	},
@@ -183,10 +184,11 @@ var Fields = []FieldDef{
 		Name:    "visibility",
 		Section: SectionSettings,
 		Type:    "string",
-		Short:   `Repository visibility: "public" or "private"`,
+		Short:   `Repository visibility: "public" | "private" | "internal"`,
 		Long: "Controls who can see the repository.\n" +
-			"  public  — visible to everyone on the internet\n" +
-			"  private — visible only to you and explicitly added collaborators",
+			"  public   — visible to everyone on the internet\n" +
+			"  private  — visible only to you and explicitly added collaborators\n" +
+			"  internal — visible to all members of the owning enterprise",
 		DocsURL: "https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/managing-repository-settings/setting-repository-visibility",
 		Example: "settings:\n  visibility: private",
 	},
@@ -256,22 +258,22 @@ var Fields = []FieldDef{
 		Name:    "deployment_branch_policy",
 		Section: SectionEnvironments,
 		Type:    "string",
-		Short:   `Branch/tag restriction mode: "all" | "protected" | "custom"`,
+		Short:   `Branch/tag restriction mode: "all" | "protected" | "selected"`,
 		Long: "In the GitHub UI: Settings → Environments → [environment name]\n" +
 			"  → Deployment branches and tags.\n\n" +
 			"Controls which branches and tags are allowed to deploy to this environment:\n" +
 			"  all       — any branch or tag (default; omit this field for the same effect)\n" +
 			"  protected — only branches with protection rules applied\n" +
-			"  custom    — only branches/tags matching patterns in deployment_branch_patterns",
+			"  selected  — only branches/tags matching patterns in deployment_branch_patterns",
 		DocsURL: "https://docs.github.com/en/actions/deployment/targeting-different-environments/using-environments-for-deployment#deployment-branches-and-tags",
-		Example: "environments:\n  - name: production\n    deployment_branch_policy: custom",
+		Example: "environments:\n  - name: production\n    deployment_branch_policy: selected",
 	},
 	{
 		Name:    "deployment_branch_patterns",
 		Section: SectionEnvironments,
 		Type:    "[]string",
-		Short:   "Branch/tag name patterns allowed to deploy (when policy is \"custom\")",
-		Long: "Only used when deployment_branch_policy is \"custom\".\n\n" +
+		Short:   "Branch/tag name patterns allowed to deploy (when policy is \"selected\")",
+		Long: "Only used when deployment_branch_policy is \"selected\".\n\n" +
 			"A list of branch or tag name patterns (glob-style) that are allowed\n" +
 			"to deploy to this environment. Patterns support wildcards:\n" +
 			"  main        — exact branch name\n" +
@@ -279,7 +281,7 @@ var Fields = []FieldDef{
 			"  v[0-9]*     — tags matching a version pattern\n\n" +
 			"At sync time, extra live patterns not in this list are removed.",
 		DocsURL: "https://docs.github.com/en/actions/deployment/targeting-different-environments/using-environments-for-deployment#deployment-branches-and-tags",
-		Example: "environments:\n  - name: production\n    deployment_branch_policy: custom\n    deployment_branch_patterns:\n      - main\n      - \"release/*\"",
+		Example: "environments:\n  - name: production\n    deployment_branch_policy: selected\n    deployment_branch_patterns:\n      - main\n      - \"release/*\"",
 	},
 	{
 		Name:    "variables",

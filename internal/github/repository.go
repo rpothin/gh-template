@@ -2,6 +2,7 @@ package github
 
 import (
 	"fmt"
+	"net/url"
 
 	gogithub "github.com/cli/go-gh/v2/pkg/api"
 	"github.com/rpothin/gh-template/internal/config"
@@ -14,30 +15,30 @@ type RepoInfo struct {
 	Owner    struct {
 		Login string `json:"login"`
 	} `json:"owner"`
-	Description                string           `json:"description"`
-	Private                    bool             `json:"private"`
-	Visibility                 string           `json:"visibility"`
-	HTMLURL                    string           `json:"html_url"`
-	HasIssues                  bool             `json:"has_issues"`
-	HasProjects                bool             `json:"has_projects"`
-	HasWiki                    bool             `json:"has_wiki"`
-	HasDiscussions             bool             `json:"has_discussions"`
-	HasPullRequests            bool             `json:"has_pull_requests"`
-	PullRequestCreationPolicy  string           `json:"pull_request_creation_policy"`
-	AllowSquashMerge           bool             `json:"allow_squash_merge"`
-	AllowMergeCommit           bool             `json:"allow_merge_commit"`
-	AllowRebaseMerge           bool             `json:"allow_rebase_merge"`
-	AllowAutoMerge             bool             `json:"allow_auto_merge"`
-	DeleteBranchOnMerge        bool             `json:"delete_branch_on_merge"`
-	AllowUpdateBranch          bool             `json:"allow_update_branch"`
-	IsTemplate                 bool             `json:"is_template"`
-	SecurityAndAnalysis        *SecurityAnalysis `json:"security_and_analysis"`
+	Description               string            `json:"description"`
+	Private                   bool              `json:"private"`
+	Visibility                string            `json:"visibility"`
+	HTMLURL                   string            `json:"html_url"`
+	HasIssues                 bool              `json:"has_issues"`
+	HasProjects               bool              `json:"has_projects"`
+	HasWiki                   bool              `json:"has_wiki"`
+	HasDiscussions            bool              `json:"has_discussions"`
+	HasPullRequests           bool              `json:"has_pull_requests"`
+	PullRequestCreationPolicy string            `json:"pull_request_creation_policy"`
+	AllowSquashMerge          bool              `json:"allow_squash_merge"`
+	AllowMergeCommit          bool              `json:"allow_merge_commit"`
+	AllowRebaseMerge          bool              `json:"allow_rebase_merge"`
+	AllowAutoMerge            bool              `json:"allow_auto_merge"`
+	DeleteBranchOnMerge       bool              `json:"delete_branch_on_merge"`
+	AllowUpdateBranch         bool              `json:"allow_update_branch"`
+	IsTemplate                bool              `json:"is_template"`
+	SecurityAndAnalysis       *SecurityAnalysis `json:"security_and_analysis"`
 }
 
 // GetRepository fetches repository metadata from the GitHub API.
 func GetRepository(client *gogithub.RESTClient, owner, repo string) (*RepoInfo, error) {
 	var result RepoInfo
-	if err := client.Get(fmt.Sprintf("repos/%s/%s", owner, repo), &result); err != nil {
+	if err := client.Get(fmt.Sprintf("repos/%s/%s", url.PathEscape(owner), url.PathEscape(repo)), &result); err != nil {
 		return nil, fmt.Errorf("fetching repository %s/%s: %w", owner, repo, err)
 	}
 	return &result, nil
@@ -107,7 +108,7 @@ func UpdateRepository(client *gogithub.RESTClient, owner, repo string, settings 
 		return fmt.Errorf("encoding repository settings for %s/%s: %w", owner, repo, err)
 	}
 	var result interface{}
-	if err := client.Patch(fmt.Sprintf("repos/%s/%s", owner, repo), body, &result); err != nil {
+	if err := client.Patch(fmt.Sprintf("repos/%s/%s", url.PathEscape(owner), url.PathEscape(repo)), body, &result); err != nil {
 		return fmt.Errorf("updating repository settings for %s/%s: %w", owner, repo, err)
 	}
 	return nil
@@ -121,7 +122,7 @@ type TopicsResponse struct {
 // GetTopics fetches the topics of a repository.
 func GetTopics(client *gogithub.RESTClient, owner, repo string) ([]string, error) {
 	var result TopicsResponse
-	if err := client.Get(fmt.Sprintf("repos/%s/%s/topics", owner, repo), &result); err != nil {
+	if err := client.Get(fmt.Sprintf("repos/%s/%s/topics", url.PathEscape(owner), url.PathEscape(repo)), &result); err != nil {
 		return nil, fmt.Errorf("fetching topics for %s/%s: %w", owner, repo, err)
 	}
 	return result.Names, nil
@@ -138,7 +139,7 @@ func SetTopics(client *gogithub.RESTClient, owner, repo string, topics []string)
 		return fmt.Errorf("encoding topics for %s/%s: %w", owner, repo, err)
 	}
 	var result interface{}
-	if err := client.Put(fmt.Sprintf("repos/%s/%s/topics", owner, repo), body, &result); err != nil {
+	if err := client.Put(fmt.Sprintf("repos/%s/%s/topics", url.PathEscape(owner), url.PathEscape(repo)), body, &result); err != nil {
 		return fmt.Errorf("setting topics for %s/%s: %w", owner, repo, err)
 	}
 	return nil
@@ -166,7 +167,7 @@ func CreateFromTemplate(client *gogithub.RESTClient, templateOwner, templateRepo
 	}
 	var result RepoInfo
 	if err := client.Post(
-		fmt.Sprintf("repos/%s/%s/generate", templateOwner, templateRepo),
+		fmt.Sprintf("repos/%s/%s/generate", url.PathEscape(templateOwner), url.PathEscape(templateRepo)),
 		body,
 		&result,
 	); err != nil {

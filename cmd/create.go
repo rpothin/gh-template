@@ -100,16 +100,22 @@ var createCmd = &cobra.Command{
 
 		ui.Success("Repository created: %s", repo.HTMLURL)
 
+		var errs []error
+
 		ui.Header("Settings:")
 		if err := github.UpdateRepository(client, owner, name, manifest.Settings); err != nil {
 			ui.Error("Failed to apply repository settings: %v", err)
+			errs = append(errs, err)
 		} else {
 			ui.Success("Applied repository settings")
 		}
 
 		ui.Header("Topics:")
-		if err := github.SetTopics(client, owner, name, manifest.Topics); err != nil {
+		if manifest.Topics == nil {
+			ui.Info("No topics configured, skipping.")
+		} else if err := github.SetTopics(client, owner, name, manifest.Topics); err != nil {
 			ui.Error("Failed to set topics: %v", err)
+			errs = append(errs, err)
 		} else {
 			ui.Success("Set topics: [%s]", strings.Join(manifest.Topics, ", "))
 		}
@@ -119,28 +125,41 @@ var createCmd = &cobra.Command{
 			ui.Success("No environments to apply")
 		} else {
 			var wg sync.WaitGroup
-			errCh := make(chan environmentResult, len(manifest.Environments))
+			envCh := make(chan config.Environment)
+			resultCh := make(chan environmentResult, len(manifest.Environments))
 
-			for _, env := range manifest.Environments {
-				env := env
-				wg.Add(1)
+			workerCount := 4
+			if len(manifest.Environments) < workerCount {
+				workerCount = len(manifest.Environments)
+			}
+
+			wg.Add(workerCount)
+			for i := 0; i < workerCount; i++ {
 				go func() {
 					defer wg.Done()
-					warns, err := github.CreateOrUpdateEnvironment(client, owner, name, env)
-					errCh <- environmentResult{
-						name:     env.Name,
-						warnings: warns,
-						err:      err,
+					for env := range envCh {
+						warns, err := github.CreateOrUpdateEnvironment(client, owner, name, env)
+						resultCh <- environmentResult{
+							name:     env.Name,
+							warnings: warns,
+							err:      err,
+						}
 					}
 				}()
 			}
 
-			wg.Wait()
-			close(errCh)
+			for _, env := range manifest.Environments {
+				envCh <- env
+			}
+			close(envCh)
 
-			for result := range errCh {
+			wg.Wait()
+			close(resultCh)
+
+			for result := range resultCh {
 				if result.err != nil {
 					ui.Error("Failed to create/update environment %s: %v", result.name, result.err)
+					errs = append(errs, result.err)
 					continue
 				}
 				ui.Success("Created/updated environment: %s", result.name)
@@ -155,6 +174,7 @@ var createCmd = &cobra.Command{
 			ui.Info("No actions permissions configured, skipping.")
 		} else if err := github.UpdateActionsPermissions(client, owner, name, manifest.Actions); err != nil {
 			ui.Error("Failed to apply actions permissions: %v", err)
+			errs = append(errs, err)
 		} else {
 			ui.Success("Applied actions permissions")
 		}
@@ -164,6 +184,7 @@ var createCmd = &cobra.Command{
 			ui.Success("No repository variables to apply")
 		} else if err := github.ApplyRepoVariables(client, owner, name, manifest.Variables); err != nil {
 			ui.Error("Failed to apply repository variables: %v", err)
+			errs = append(errs, err)
 		} else {
 			ui.Success("Applied %d repository variable(s)", len(manifest.Variables))
 		}
@@ -175,6 +196,7 @@ var createCmd = &cobra.Command{
 			warns, err := github.ApplyRepoSecrets(client, owner, name, manifest.Secrets)
 			if err != nil {
 				ui.Error("Failed to apply repository secrets: %v", err)
+				errs = append(errs, err)
 			} else {
 				ui.Success("Applied %d repository secret(s)", len(manifest.Secrets))
 				for _, w := range warns {
@@ -188,8 +210,14 @@ var createCmd = &cobra.Command{
 			ui.Info("No security settings configured, skipping.")
 		} else if err := github.UpdateSecuritySettings(client, owner, name, manifest.Security); err != nil {
 			ui.Error("Failed to apply security settings: %v", err)
+			errs = append(errs, err)
 		} else {
 			ui.Success("Applied security settings")
+		}
+
+		if len(errs) > 0 {
+			ui.SummaryLine("Done with %d error(s). Repository available at %s", len(errs), repo.HTMLURL)
+			os.Exit(1)
 		}
 
 		ui.SummaryLine("Done! Repository available at %s", repo.HTMLURL)
@@ -202,4 +230,3 @@ func init() {
 	createCmd.Flags().BoolVar(&createPrivate, "private", false, "Create as a private repository")
 	rootCmd.AddCommand(createCmd)
 }
-

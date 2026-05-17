@@ -60,7 +60,7 @@ var syncCmd = &cobra.Command{
 		}
 
 		ui.Header("Topics:")
-		if len(manifest.Topics) == 0 {
+		if manifest.Topics == nil {
 			ui.Info("No topics configured, skipping.")
 		} else if err := ghapi.SetTopics(client, owner, repo, manifest.Topics); err != nil {
 			ui.Error("Failed to set topics: %v", err)
@@ -73,28 +73,38 @@ var syncCmd = &cobra.Command{
 		if len(manifest.Environments) == 0 {
 			ui.Info("No environments configured, skipping.")
 		} else {
-			var wg sync.WaitGroup
-			wg.Add(len(manifest.Environments))
+			const environmentWorkerCount = 4
 
-			for _, env := range manifest.Environments {
-				env := env
+			jobs := make(chan config.Environment, len(manifest.Environments))
+			var wg sync.WaitGroup
+
+			for i := 0; i < environmentWorkerCount; i++ {
+				wg.Add(1)
 				go func() {
 					defer wg.Done()
 
-					warns, err := ghapi.CreateOrUpdateEnvironment(client, owner, repo, env)
-					mu.Lock()
-					defer mu.Unlock()
-					if err != nil {
-						errs = append(errs, err)
-						ui.Error("Failed to sync environment %s: %v", env.Name, err)
-						return
-					}
-					ui.Success("Created/updated environment: %s", env.Name)
-					for _, w := range warns {
-						ui.Warning("%s", w)
+					for env := range jobs {
+						warns, err := ghapi.CreateOrUpdateEnvironment(client, owner, repo, env)
+						mu.Lock()
+						if err != nil {
+							errs = append(errs, err)
+							ui.Error("Failed to sync environment %s: %v", env.Name, err)
+							mu.Unlock()
+							continue
+						}
+						ui.Success("Created/updated environment: %s", env.Name)
+						for _, w := range warns {
+							ui.Warning("%s", w)
+						}
+						mu.Unlock()
 					}
 				}()
 			}
+
+			for _, env := range manifest.Environments {
+				jobs <- env
+			}
+			close(jobs)
 
 			wg.Wait()
 		}
@@ -174,6 +184,15 @@ func repoUpdatePayload(settings config.RepoSettings) map[string]interface{} {
 	}
 	if settings.HasProjects != nil {
 		payload["has_projects"] = *settings.HasProjects
+	}
+	if settings.HasDiscussions != nil {
+		payload["has_discussions"] = *settings.HasDiscussions
+	}
+	if settings.HasPullRequests != nil {
+		payload["has_pull_requests"] = *settings.HasPullRequests
+	}
+	if settings.PullRequestCreationPolicy != "" {
+		payload["pull_request_creation_policy"] = settings.PullRequestCreationPolicy
 	}
 	if settings.AllowSquashMerge != nil {
 		payload["allow_squash_merge"] = *settings.AllowSquashMerge

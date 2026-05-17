@@ -455,7 +455,7 @@ func auditEnvFields(cfg, live config.Environment, c *auditCollector) {
 		} else {
 			c.match("deployment_branch_policy", cfg.DeploymentBranchPolicy)
 		}
-		if cfg.DeploymentBranchPolicy == "custom" {
+		if cfg.DeploymentBranchPolicy == "selected" {
 			livePatternSet := make(map[string]struct{}, len(live.DeploymentBranchPatterns))
 			for _, p := range live.DeploymentBranchPatterns {
 				livePatternSet[p] = struct{}{}
@@ -656,4 +656,3 @@ func auditRepoVarsSecrets(cfgVars []config.EnvironmentVariable, cfgSecrets []con
 		}
 	}
 }
-

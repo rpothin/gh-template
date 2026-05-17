@@ -84,9 +84,9 @@ type orgSummary struct {
 // with the error message and that org is skipped. When includeArchived is
 // false, archived repositories are excluded from the results.
 func ListOrgTemplateRepos(client *gogithub.RESTClient, includeArchived bool, warningFn func(string)) ([]TemplateSummary, error) {
-	var orgs []orgSummary
-	if err := client.Get("user/orgs?per_page=100", &orgs); err != nil {
-		return nil, fmt.Errorf("listing user organisations: %w", err)
+	orgs, err := listUserOrgs(client)
+	if err != nil {
+		return nil, err
 	}
 
 	if len(orgs) == 0 {
@@ -138,12 +138,29 @@ func ListOrgTemplateRepos(client *gogithub.RESTClient, includeArchived bool, war
 	return all, nil
 }
 
+func listUserOrgs(client *gogithub.RESTClient) ([]orgSummary, error) {
+	const perPage = 100
+
+	var orgs []orgSummary
+	for page := 1; ; page++ {
+		var pageOrgs []orgSummary
+		if err := client.Get(fmt.Sprintf("user/orgs?per_page=%d&page=%d", perPage, page), &pageOrgs); err != nil {
+			return nil, fmt.Errorf("listing user organisations (page %d): %w", page, err)
+		}
+		orgs = append(orgs, pageOrgs...)
+		if len(pageOrgs) < perPage {
+			break
+		}
+	}
+	return orgs, nil
+}
+
 func fetchOrgTemplates(client *gogithub.RESTClient, orgLogin string, includeArchived bool) ([]TemplateSummary, error) {
 	const perPage = 100
 	var results []TemplateSummary
 	for page := 1; ; page++ {
 		var repos []userRepoPage
-		path := fmt.Sprintf("orgs/%s/repos?type=all&per_page=%d&page=%d", orgLogin, perPage, page)
+		path := fmt.Sprintf("orgs/%s/repos?type=all&per_page=%d&page=%d", url.PathEscape(orgLogin), perPage, page)
 		if err := client.Get(path, &repos); err != nil {
 			return nil, err
 		}

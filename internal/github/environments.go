@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"net/url"
 	"strings"
 	"sync"
 
@@ -97,35 +98,88 @@ type reviewerRef struct {
 // GetEnvironments fetches all environments for a repository with full detail,
 // including reviewers, variables, secret names, and branch policies.
 func GetEnvironments(client *gogithub.RESTClient, owner, repo string) ([]config.Environment, error) {
-	var result environmentsListResponse
-	if err := client.Get(fmt.Sprintf("repos/%s/%s/environments", owner, repo), &result); err != nil {
-		return nil, fmt.Errorf("fetching environments for %s/%s: %w", owner, repo, err)
+	environments, err := listEnvironments(client, owner, repo)
+	if err != nil {
+		return nil, err
 	}
 
+	type envJob struct {
+		index int
+		entry envListEntry
+	}
 	type envResult struct {
 		index int
 		env   config.Environment
 		err   error
 	}
 
-	ch := make(chan envResult, len(result.Environments))
-	for i, e := range result.Environments {
-		i, e := i, e
+	const workers = 4
+	jobs := make(chan envJob, len(environments))
+	results := make(chan envResult, len(environments))
+
+	var wg sync.WaitGroup
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
 		go func() {
-			env, err := buildFullEnvironment(client, owner, repo, e)
-			ch <- envResult{i, env, err}
+			defer wg.Done()
+			for job := range jobs {
+				env, err := buildFullEnvironment(client, owner, repo, job.entry)
+				results <- envResult{index: job.index, env: env, err: err}
+			}
 		}()
 	}
 
-	envs := make([]config.Environment, len(result.Environments))
-	for range result.Environments {
-		r := <-ch
-		if r.err != nil {
-			return nil, r.err
+	for i, env := range environments {
+		jobs <- envJob{index: i, entry: env}
+	}
+	close(jobs)
+
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	envs := make([]config.Environment, len(environments))
+	var firstErr error
+	for result := range results {
+		if result.err != nil {
+			if firstErr == nil {
+				firstErr = result.err
+			}
+			continue
 		}
-		envs[r.index] = r.env
+		envs[result.index] = result.env
+	}
+	if firstErr != nil {
+		return nil, firstErr
 	}
 	return envs, nil
+}
+
+func listEnvironments(client *gogithub.RESTClient, owner, repo string) ([]envListEntry, error) {
+	const perPage = 100
+
+	var environments []envListEntry
+	for page := 1; ; page++ {
+		var result environmentsListResponse
+		if err := client.Get(
+			fmt.Sprintf(
+				"repos/%s/%s/environments?per_page=%d&page=%d",
+				url.PathEscape(owner),
+				url.PathEscape(repo),
+				perPage,
+				page,
+			),
+			&result,
+		); err != nil {
+			return nil, fmt.Errorf("fetching environments for %s/%s (page %d): %w", owner, repo, page, err)
+		}
+		environments = append(environments, result.Environments...)
+		if len(result.Environments) < perPage {
+			break
+		}
+	}
+	return environments, nil
 }
 
 // buildFullEnvironment constructs a complete config.Environment from an envListEntry
@@ -160,7 +214,7 @@ func buildFullEnvironment(client *gogithub.RESTClient, owner, repo string, e env
 	case e.DeploymentBranchPolicy.ProtectedBranches:
 		env.DeploymentBranchPolicy = "protected"
 	default:
-		env.DeploymentBranchPolicy = "custom"
+		env.DeploymentBranchPolicy = "selected"
 	}
 
 	var (
@@ -202,7 +256,7 @@ func buildFullEnvironment(client *gogithub.RESTClient, owner, repo string, e env
 		mu.Unlock()
 	}()
 
-	if env.DeploymentBranchPolicy == "custom" {
+	if env.DeploymentBranchPolicy == "selected" {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -224,52 +278,124 @@ func buildFullEnvironment(client *gogithub.RESTClient, owner, repo string, e env
 	return env, nil
 }
 
-func getDeploymentBranchPatterns(client *gogithub.RESTClient, owner, repo, envName string) ([]string, error) {
-	var result branchPoliciesListResponse
-	if err := client.Get(
-		fmt.Sprintf("repos/%s/%s/environments/%s/deployment-branch-policies", owner, repo, envName),
-		&result,
-	); err != nil {
-		return nil, fmt.Errorf("fetching branch policies for environment %q: %w", envName, err)
+func listDeploymentBranchPolicies(client *gogithub.RESTClient, owner, repo, envName string) ([]branchPolicy, error) {
+	const perPage = 100
+
+	var policies []branchPolicy
+	for page := 1; ; page++ {
+		var result branchPoliciesListResponse
+		if err := client.Get(
+			fmt.Sprintf(
+				"repos/%s/%s/environments/%s/deployment-branch-policies?per_page=%d&page=%d",
+				url.PathEscape(owner),
+				url.PathEscape(repo),
+				url.PathEscape(envName),
+				perPage,
+				page,
+			),
+			&result,
+		); err != nil {
+			return nil, fmt.Errorf("fetching branch policies for environment %q (page %d): %w", envName, page, err)
+		}
+		policies = append(policies, result.BranchPolicies...)
+		if len(result.BranchPolicies) < perPage {
+			break
+		}
 	}
-	patterns := make([]string, 0, len(result.BranchPolicies))
-	for _, p := range result.BranchPolicies {
+	return policies, nil
+}
+
+func getDeploymentBranchPatterns(client *gogithub.RESTClient, owner, repo, envName string) ([]string, error) {
+	policies, err := listDeploymentBranchPolicies(client, owner, repo, envName)
+	if err != nil {
+		return nil, err
+	}
+	patterns := make([]string, 0, len(policies))
+	for _, p := range policies {
 		patterns = append(patterns, p.Name)
 	}
 	return patterns, nil
 }
 
-func getEnvironmentVariables(client *gogithub.RESTClient, owner, repo, envName string) ([]config.EnvironmentVariable, error) {
-	var result variablesListResponse
-	if err := client.Get(
-		fmt.Sprintf("repos/%s/%s/environments/%s/variables", owner, repo, envName),
-		&result,
-	); err != nil {
-		return nil, fmt.Errorf("fetching variables for environment %q: %w", envName, err)
+func listEnvironmentVariables(client *gogithub.RESTClient, owner, repo, envName string) ([]variableResponse, error) {
+	const perPage = 100
+
+	var variables []variableResponse
+	for page := 1; ; page++ {
+		var result variablesListResponse
+		if err := client.Get(
+			fmt.Sprintf(
+				"repos/%s/%s/environments/%s/variables?per_page=%d&page=%d",
+				url.PathEscape(owner),
+				url.PathEscape(repo),
+				url.PathEscape(envName),
+				perPage,
+				page,
+			),
+			&result,
+		); err != nil {
+			return nil, fmt.Errorf("fetching variables for environment %q (page %d): %w", envName, page, err)
+		}
+		variables = append(variables, result.Variables...)
+		if len(result.Variables) < perPage {
+			break
+		}
 	}
-	if len(result.Variables) == 0 {
+	return variables, nil
+}
+
+func getEnvironmentVariables(client *gogithub.RESTClient, owner, repo, envName string) ([]config.EnvironmentVariable, error) {
+	variables, err := listEnvironmentVariables(client, owner, repo, envName)
+	if err != nil {
+		return nil, err
+	}
+	if len(variables) == 0 {
 		return nil, nil
 	}
-	vars := make([]config.EnvironmentVariable, len(result.Variables))
-	for i, v := range result.Variables {
+	vars := make([]config.EnvironmentVariable, len(variables))
+	for i, v := range variables {
 		vars[i] = config.EnvironmentVariable{Name: v.Name, Value: v.Value}
 	}
 	return vars, nil
 }
 
-func getEnvironmentSecretNames(client *gogithub.RESTClient, owner, repo, envName string) ([]config.EnvironmentSecret, error) {
-	var result secretsListResponse
-	if err := client.Get(
-		fmt.Sprintf("repos/%s/%s/environments/%s/secrets", owner, repo, envName),
-		&result,
-	); err != nil {
-		return nil, fmt.Errorf("fetching secrets for environment %q: %w", envName, err)
+func listEnvironmentSecrets(client *gogithub.RESTClient, owner, repo, envName string) ([]secretResponse, error) {
+	const perPage = 100
+
+	var secrets []secretResponse
+	for page := 1; ; page++ {
+		var result secretsListResponse
+		if err := client.Get(
+			fmt.Sprintf(
+				"repos/%s/%s/environments/%s/secrets?per_page=%d&page=%d",
+				url.PathEscape(owner),
+				url.PathEscape(repo),
+				url.PathEscape(envName),
+				perPage,
+				page,
+			),
+			&result,
+		); err != nil {
+			return nil, fmt.Errorf("fetching secrets for environment %q (page %d): %w", envName, page, err)
+		}
+		secrets = append(secrets, result.Secrets...)
+		if len(result.Secrets) < perPage {
+			break
+		}
 	}
-	if len(result.Secrets) == 0 {
+	return secrets, nil
+}
+
+func getEnvironmentSecretNames(client *gogithub.RESTClient, owner, repo, envName string) ([]config.EnvironmentSecret, error) {
+	secretNames, err := listEnvironmentSecrets(client, owner, repo, envName)
+	if err != nil {
+		return nil, err
+	}
+	if len(secretNames) == 0 {
 		return nil, nil
 	}
-	secrets := make([]config.EnvironmentSecret, len(result.Secrets))
-	for i, s := range result.Secrets {
+	secrets := make([]config.EnvironmentSecret, len(secretNames))
+	for i, s := range secretNames {
 		secrets[i] = config.EnvironmentSecret{Name: s.Name, Value: config.SecretPlaceholder}
 	}
 	return secrets, nil
@@ -302,12 +428,12 @@ func CreateOrUpdateEnvironment(client *gogithub.RESTClient, owner, repo string, 
 	switch env.DeploymentBranchPolicy {
 	case "protected":
 		payload["deployment_branch_policy"] = map[string]interface{}{
-			"protected_branches":    true,
+			"protected_branches":     true,
 			"custom_branch_policies": false,
 		}
-	case "custom":
+	case "selected":
 		payload["deployment_branch_policy"] = map[string]interface{}{
-			"protected_branches":    false,
+			"protected_branches":     false,
 			"custom_branch_policies": true,
 		}
 	default:
@@ -320,7 +446,12 @@ func CreateOrUpdateEnvironment(client *gogithub.RESTClient, owner, repo string, 
 	}
 	var putResult interface{}
 	if err := client.Put(
-		fmt.Sprintf("repos/%s/%s/environments/%s", owner, repo, env.Name),
+		fmt.Sprintf(
+			"repos/%s/%s/environments/%s",
+			url.PathEscape(owner),
+			url.PathEscape(repo),
+			url.PathEscape(env.Name),
+		),
 		body,
 		&putResult,
 	); err != nil {
@@ -347,7 +478,7 @@ func CreateOrUpdateEnvironment(client *gogithub.RESTClient, owner, repo string, 
 		mu.Unlock()
 	}
 
-	if env.DeploymentBranchPolicy == "custom" {
+	if env.DeploymentBranchPolicy == "selected" {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -426,7 +557,7 @@ func resolveReviewer(client *gogithub.RESTClient, ref string) (reviewerRef, erro
 		var user struct {
 			ID int `json:"id"`
 		}
-		if err := client.Get(fmt.Sprintf("users/%s", ref), &user); err != nil {
+		if err := client.Get(fmt.Sprintf("users/%s", url.PathEscape(ref)), &user); err != nil {
 			return reviewerRef{}, fmt.Errorf("resolving user reviewer %q: %w", ref, err)
 		}
 		return reviewerRef{Type: "User", ID: user.ID}, nil
@@ -435,23 +566,23 @@ func resolveReviewer(client *gogithub.RESTClient, ref string) (reviewerRef, erro
 	var teamResp struct {
 		ID int `json:"id"`
 	}
-	if err := client.Get(fmt.Sprintf("orgs/%s/teams/%s", org, team), &teamResp); err != nil {
+	if err := client.Get(
+		fmt.Sprintf("orgs/%s/teams/%s", url.PathEscape(org), url.PathEscape(team)),
+		&teamResp,
+	); err != nil {
 		return reviewerRef{}, fmt.Errorf("resolving team reviewer %q: %w", ref, err)
 	}
 	return reviewerRef{Type: "Team", ID: teamResp.ID}, nil
 }
 
 func reconcileCustomBranchPatterns(client *gogithub.RESTClient, owner, repo, envName string, desired []string) error {
-	var result branchPoliciesListResponse
-	if err := client.Get(
-		fmt.Sprintf("repos/%s/%s/environments/%s/deployment-branch-policies", owner, repo, envName),
-		&result,
-	); err != nil {
-		return fmt.Errorf("fetching branch policies for environment %q: %w", envName, err)
+	policies, err := listDeploymentBranchPolicies(client, owner, repo, envName)
+	if err != nil {
+		return err
 	}
 
-	liveByName := make(map[string]int, len(result.BranchPolicies))
-	for _, p := range result.BranchPolicies {
+	liveByName := make(map[string]int, len(policies))
+	for _, p := range policies {
 		liveByName[p.Name] = p.ID
 	}
 	desiredSet := make(map[string]struct{}, len(desired))
@@ -469,8 +600,14 @@ func reconcileCustomBranchPatterns(client *gogithub.RESTClient, owner, repo, env
 		}
 		var created interface{}
 		if err := client.Post(
-			fmt.Sprintf("repos/%s/%s/environments/%s/deployment-branch-policies", owner, repo, envName),
-			body, &created,
+			fmt.Sprintf(
+				"repos/%s/%s/environments/%s/deployment-branch-policies",
+				url.PathEscape(owner),
+				url.PathEscape(repo),
+				url.PathEscape(envName),
+			),
+			body,
+			&created,
 		); err != nil {
 			return fmt.Errorf("creating branch policy pattern %q in environment %q: %w", pattern, envName, err)
 		}
@@ -481,7 +618,13 @@ func reconcileCustomBranchPatterns(client *gogithub.RESTClient, owner, repo, env
 			continue
 		}
 		if err := client.Delete(
-			fmt.Sprintf("repos/%s/%s/environments/%s/deployment-branch-policies/%d", owner, repo, envName, id),
+			fmt.Sprintf(
+				"repos/%s/%s/environments/%s/deployment-branch-policies/%d",
+				url.PathEscape(owner),
+				url.PathEscape(repo),
+				url.PathEscape(envName),
+				id,
+			),
 			nil,
 		); err != nil {
 			return fmt.Errorf("deleting branch policy pattern %q from environment %q: %w", name, envName, err)
@@ -491,16 +634,13 @@ func reconcileCustomBranchPatterns(client *gogithub.RESTClient, owner, repo, env
 }
 
 func applyEnvironmentVariables(client *gogithub.RESTClient, owner, repo, envName string, vars []config.EnvironmentVariable) error {
-	var existing variablesListResponse
-	if err := client.Get(
-		fmt.Sprintf("repos/%s/%s/environments/%s/variables", owner, repo, envName),
-		&existing,
-	); err != nil {
-		return fmt.Errorf("fetching variables for environment %q: %w", envName, err)
+	existingVariables, err := listEnvironmentVariables(client, owner, repo, envName)
+	if err != nil {
+		return err
 	}
 
-	liveVarNames := make(map[string]struct{}, len(existing.Variables))
-	for _, v := range existing.Variables {
+	liveVarNames := make(map[string]struct{}, len(existingVariables))
+	for _, v := range existingVariables {
 		liveVarNames[v.Name] = struct{}{}
 	}
 
@@ -512,15 +652,28 @@ func applyEnvironmentVariables(client *gogithub.RESTClient, owner, repo, envName
 		var result interface{}
 		if _, exists := liveVarNames[v.Name]; exists {
 			if err := client.Patch(
-				fmt.Sprintf("repos/%s/%s/environments/%s/variables/%s", owner, repo, envName, v.Name),
-				body, &result,
+				fmt.Sprintf(
+					"repos/%s/%s/environments/%s/variables/%s",
+					url.PathEscape(owner),
+					url.PathEscape(repo),
+					url.PathEscape(envName),
+					url.PathEscape(v.Name),
+				),
+				body,
+				&result,
 			); err != nil {
 				return fmt.Errorf("updating variable %q in environment %q: %w", v.Name, envName, err)
 			}
 		} else {
 			if err := client.Post(
-				fmt.Sprintf("repos/%s/%s/environments/%s/variables", owner, repo, envName),
-				body, &result,
+				fmt.Sprintf(
+					"repos/%s/%s/environments/%s/variables",
+					url.PathEscape(owner),
+					url.PathEscape(repo),
+					url.PathEscape(envName),
+				),
+				body,
+				&result,
 			); err != nil {
 				return fmt.Errorf("creating variable %q in environment %q: %w", v.Name, envName, err)
 			}
@@ -530,16 +683,13 @@ func applyEnvironmentVariables(client *gogithub.RESTClient, owner, repo, envName
 }
 
 func applyEnvironmentSecrets(client *gogithub.RESTClient, owner, repo, envName string, secrets []config.EnvironmentSecret) (warnings []string, err error) {
-	var existing secretsListResponse
-	if err := client.Get(
-		fmt.Sprintf("repos/%s/%s/environments/%s/secrets", owner, repo, envName),
-		&existing,
-	); err != nil {
-		return nil, fmt.Errorf("fetching secrets for environment %q: %w", envName, err)
+	existingSecrets, err := listEnvironmentSecrets(client, owner, repo, envName)
+	if err != nil {
+		return nil, err
 	}
 
-	liveSecretNames := make(map[string]struct{}, len(existing.Secrets))
-	for _, s := range existing.Secrets {
+	liveSecretNames := make(map[string]struct{}, len(existingSecrets))
+	for _, s := range existingSecrets {
 		liveSecretNames[s.Name] = struct{}{}
 	}
 
@@ -573,8 +723,15 @@ func applyEnvironmentSecrets(client *gogithub.RESTClient, owner, repo, envName s
 		}
 		var result interface{}
 		if err := client.Put(
-			fmt.Sprintf("repos/%s/%s/environments/%s/secrets/%s", owner, repo, envName, s.Name),
-			body, &result,
+			fmt.Sprintf(
+				"repos/%s/%s/environments/%s/secrets/%s",
+				url.PathEscape(owner),
+				url.PathEscape(repo),
+				url.PathEscape(envName),
+				url.PathEscape(s.Name),
+			),
+			body,
+			&result,
 		); err != nil {
 			return nil, fmt.Errorf("creating secret %q in environment %q: %w", s.Name, envName, err)
 		}
@@ -586,7 +743,12 @@ func applyEnvironmentSecrets(client *gogithub.RESTClient, owner, repo, envName s
 func getEnvironmentPublicKey(client *gogithub.RESTClient, owner, repo, envName string) (publicKeyResponse, error) {
 	var pk publicKeyResponse
 	if err := client.Get(
-		fmt.Sprintf("repos/%s/%s/environments/%s/secrets/public-key", owner, repo, envName),
+		fmt.Sprintf(
+			"repos/%s/%s/environments/%s/secrets/public-key",
+			url.PathEscape(owner),
+			url.PathEscape(repo),
+			url.PathEscape(envName),
+		),
 		&pk,
 	); err != nil {
 		return publicKeyResponse{}, fmt.Errorf("fetching public key for environment %q: %w", envName, err)

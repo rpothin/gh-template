@@ -7,11 +7,12 @@ A GitHub CLI extension to snapshot existing repositories' configuration, enhance
 |---|---|
 | `gh template create <name>` | Create a repository from a template manifest (template repo read from manifest) |
 | `gh template snapshot` | Capture a live repository's settings as a YAML manifest |
-| `gh template audit` | Detect configuration drift between config and live state |
-| `gh template sync` | Reconcile a live repository to match the config |
+| `gh template audit` | Detect configuration drift between a manifest and live state |
+| `gh template sync` | Reconcile a live repository to match a manifest |
 | `gh template list` | List your own (and org) template repositories |
 | `gh template search [query]` | Search public template repositories on GitHub |
 | `gh template fetch` | Fetch a template's recommended manifest locally for review |
+| `gh template completion [bash\|zsh\|fish\|powershell]` | Generate shell completion scripts |
 | `gh template explain [field]` | Show descriptions for all `template-metadata.yml` fields |
 
 ## Usage
@@ -24,12 +25,34 @@ gh template list
 gh template list --include-orgs   # also includes organisation templates
 ```
 
+Additional flags for `gh template list`:
+```text
+--include-archived    Include archived template repositories in results (default: false)
+--format table|json   Output format: table (default) or json
+```
+
+```sh
+gh template list --include-archived
+gh template list --format json | ConvertFrom-Json
+```
+
 **Discover community templates** (public repos on GitHub):
 ```sh
 gh template search go cli
 gh template search starter language:go
 gh template search                # most starred public templates
 gh template search --limit 50     # up to 100 results
+```
+
+Additional flags for `gh template search`:
+```text
+--include-archived    Include archived template repositories in results (default: false)
+--format table|json   Output format: table (default) or json
+```
+
+```sh
+gh template search go cli --include-archived
+gh template search go cli --format json | jq '.[].full_name'
 ```
 
 Once you find a template you want to use, fetch its manifest and create:
@@ -56,6 +79,14 @@ gh template create my-new-repo --manifest owner/my-template
 
 When a template maintainer ships a `template-metadata.yml` alongside their template repository, this lets you create a fully-configured repository in one command without any local setup.
 
+### Snapshotting a repository
+
+Capture a live repository's current settings into a manifest:
+```sh
+gh template snapshot --repo owner/myrepo
+gh template snapshot --repo owner/myrepo --output ./template-metadata.yml
+```
+
 ### Fetching a manifest for local review
 
 To inspect or customise a template's manifest before creating a repository, fetch it locally first:
@@ -66,6 +97,39 @@ gh template create my-new-repo --manifest ./template-metadata.yml
 ```
 
 By default the file is written to `./template-metadata.yml`. Use `--output <path>` to change the destination.
+
+### Auditing configuration drift
+
+Compare a live repository to a manifest:
+```sh
+gh template audit --repo owner/myrepo
+gh template audit --repo owner/myrepo --manifest ./custom-template.yml
+```
+
+Additional flags for `gh template audit`:
+```text
+--format table|json   Output format: table (default) or json (for CI scripting, exits 1 on drift)
+```
+
+```sh
+gh template audit --repo owner/myrepo --format json | ConvertFrom-Json
+gh template audit --repo owner/myrepo --format json | jq '.drift_count'
+```
+
+### Syncing a repository to a manifest
+
+Apply a manifest to an existing repository:
+```sh
+gh template sync --repo owner/myrepo
+gh template sync --repo owner/myrepo --manifest ./custom-template.yml
+```
+
+### Shell completion
+
+Generate shell completion scripts for supported shells:
+```sh
+gh template completion [bash|zsh|fish|powershell]
+```
 
 ## Manifest Reference
 
@@ -88,14 +152,14 @@ All fields are optional. Omitting a field means it is not applied by `sync` and 
 | `has_projects` | bool | Enable the Projects tab (kanban/task boards) |
 | `has_discussions` | bool | Enable Discussions for community conversations |
 | `has_pull_requests` | bool | Enable the Pull Requests tab |
-| `pull_request_creation_policy` | string | Who can open PRs: `"all"` \| `"collaborators_only"` |
+| `pull_request_creation_policy` | string | Who can open PRs: `"collaborators_only"` \| `"contributors_only"` \| `"all_users"` \| `"any_user"` |
 | `allow_squash_merge` | bool | Allow squash-merging pull requests |
 | `allow_merge_commit` | bool | Allow standard merge commits on pull requests |
 | `allow_rebase_merge` | bool | Allow rebase-merging pull requests |
 | `allow_auto_merge` | bool | Let PRs auto-merge once required checks pass |
 | `delete_branch_on_merge` | bool | Auto-delete source branch after PR merge |
 | `allow_update_branch` | bool | Show "Update branch" button on PRs behind base |
-| `visibility` | string | Repository visibility: `"public"` or `"private"` |
+| `visibility` | string | Repository visibility: `"public"` \| `"private"` \| `"internal"` |
 | `description` | string | Short description shown on the repository page |
 
 ### `topics`
@@ -112,8 +176,8 @@ Each entry in the `environments` list configures one GitHub Actions environment.
 | `wait_timer` | int | Minutes to wait before a deployment can proceed (0–43200) |
 | `prevent_self_review` | bool | Prevent the deployer from approving their own deployment |
 | `reviewers` | []string | Usernames or `org/team-slug` references that must approve (up to 6) |
-| `deployment_branch_policy` | string | Branch/tag restriction mode: `"all"` \| `"protected"` \| `"custom"` |
-| `deployment_branch_patterns` | []string | Glob patterns allowed to deploy (only when policy is `"custom"`) |
+| `deployment_branch_policy` | string | Branch/tag restriction mode: `"all"` \| `"protected"` \| `"selected"` |
+| `deployment_branch_patterns` | []string | Glob patterns allowed to deploy (only when policy is `"selected"`) |
 | `variables` | []object `{name, value}` | Plaintext environment variables injected into workflow jobs |
 | `secrets` | []object `{name, value}` | Named secrets to ensure exist; `value` is always `"PLACEHOLDER"` |
 
@@ -136,7 +200,7 @@ environments:
     reviewers:
       - rpothin
       - my-org/platform-team
-    deployment_branch_policy: custom
+    deployment_branch_policy: selected
     deployment_branch_patterns:
       - main
       - "release/*"

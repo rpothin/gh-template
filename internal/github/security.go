@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 
 	gogithub "github.com/cli/go-gh/v2/pkg/api"
 	"github.com/rpothin/gh-template/internal/config"
@@ -31,7 +32,10 @@ type securityAnalysisEntry struct {
 // A 404 response is treated as "disabled" (not an error).
 func GetVulnerabilityAlertsEnabled(client *gogithub.RESTClient, owner, repo string) (bool, error) {
 	var result interface{}
-	err := client.Get(fmt.Sprintf("repos/%s/%s/vulnerability-alerts", owner, repo), &result)
+	err := client.Get(
+		fmt.Sprintf("repos/%s/%s/vulnerability-alerts", url.PathEscape(owner), url.PathEscape(repo)),
+		&result,
+	)
 	if err == nil {
 		return true, nil
 	}
@@ -121,14 +125,18 @@ func UpdateSecuritySettings(client *gogithub.RESTClient, owner, repo string, set
 		return err
 	}
 	var result interface{}
-	if err := client.Patch(fmt.Sprintf("repos/%s/%s", owner, repo), body, &result); err != nil {
+	if err := client.Patch(
+		fmt.Sprintf("repos/%s/%s", url.PathEscape(owner), url.PathEscape(repo)),
+		body,
+		&result,
+	); err != nil {
 		return fmt.Errorf("updating security settings for %s/%s: %w", owner, repo, err)
 	}
 	return nil
 }
 
 func setVulnerabilityAlerts(client *gogithub.RESTClient, owner, repo string, enable bool) error {
-	path := fmt.Sprintf("repos/%s/%s/vulnerability-alerts", owner, repo)
+	path := fmt.Sprintf("repos/%s/%s/vulnerability-alerts", url.PathEscape(owner), url.PathEscape(repo))
 	if enable {
 		body, _ := jsonBody(map[string]interface{}{})
 		var result interface{}
