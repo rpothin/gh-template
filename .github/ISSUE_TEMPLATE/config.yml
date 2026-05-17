@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and usage help
+    url: https://github.com/rpothin/gh-template/discussions
+    about: Ask questions and get help using gh-template.
+  - name: Feature ideas
+    url: https://github.com/rpothin/gh-template/discussions
+    about: Start a discussion before proposing new behavior.
