@@ -24,6 +24,22 @@ type environmentResult struct {
 	err      error
 }
 
+// isRepoRef returns true when s looks like "owner/repo" rather than a file path.
+// A repo reference has exactly one "/" with no file extension on the second segment
+// and no filesystem path indicators (leading dot or backslash).
+func isRepoRef(s string) bool {
+	if strings.HasPrefix(s, ".") || strings.HasPrefix(s, "/") || strings.Contains(s, "\\") {
+		return false
+	}
+	_, _, err := util.ParseOwnerRepo(s)
+	if err != nil {
+		return false
+	}
+	// If the repo segment contains a dot it likely has a file extension (e.g. template.yml).
+	parts := strings.SplitN(s, "/", 2)
+	return !strings.Contains(parts[1], ".")
+}
+
 var createCmd = &cobra.Command{
 	Use:   "create <name>",
 	Short: "Create a repository from a template",
@@ -31,25 +47,42 @@ var createCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name := args[0]
 
-		// Load manifest first — it is the single required input and must contain
-		// the template field so we can fail fast before making any API calls.
-		manifest, err := config.LoadManifest(createManifestPath)
-		if err != nil {
-			return fmt.Errorf("loading manifest %q: %w", createManifestPath, err)
-		}
-
-		if manifest.Template == "" {
-			return fmt.Errorf("manifest %q is missing the required 'template' field (owner/repo format)", createManifestPath)
-		}
-
-		templateOwner, templateRepo, err := util.ParseOwnerRepo(manifest.Template)
-		if err != nil {
-			return fmt.Errorf("invalid template field in manifest: %w", err)
-		}
-
 		client, err := github.NewRESTClient()
 		if err != nil {
 			return err
+		}
+
+		// --manifest accepts either a local file path or an owner/repo reference.
+		// When owner/repo is given, template-metadata.yml is fetched from the repo
+		// root via the GitHub API and parsed in memory (no temp file).
+		var manifest *config.Manifest
+		if isRepoRef(createManifestPath) {
+			mOwner, mRepo, _ := util.ParseOwnerRepo(createManifestPath)
+			manifest, err = github.FetchManifestFromRepo(client, mOwner, mRepo)
+			if err != nil {
+				return fmt.Errorf("fetching manifest from %s: %w", createManifestPath, err)
+			}
+			ui.Info("Fetched manifest from %s", createManifestPath)
+		} else {
+			manifest, err = config.LoadManifest(createManifestPath)
+			if err != nil {
+				return fmt.Errorf("loading manifest %q: %w", createManifestPath, err)
+			}
+		}
+
+		// Resolve the template repo: prefer manifest.Template; fall back to the
+		// owner/repo value passed to --manifest when fetching remotely.
+		templateRef := manifest.Template
+		if templateRef == "" && isRepoRef(createManifestPath) {
+			templateRef = createManifestPath
+		}
+		if templateRef == "" {
+			return fmt.Errorf("manifest %q is missing the required 'template' field (owner/repo format)", createManifestPath)
+		}
+
+		templateOwner, templateRepo, err := util.ParseOwnerRepo(templateRef)
+		if err != nil {
+			return fmt.Errorf("invalid template field in manifest: %w", err)
 		}
 
 		owner, err := github.GetAuthenticatedUser(client)

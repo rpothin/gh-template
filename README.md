@@ -9,7 +9,37 @@ A GitHub CLI extension to snapshot existing repositories' configuration, enhance
 | `gh template snapshot` | Capture a live repository's settings as a YAML manifest |
 | `gh template audit` | Detect configuration drift between config and live state |
 | `gh template sync` | Reconcile a live repository to match the config |
+| `gh template manifest fetch <owner/repo>` | Fetch a template's recommended manifest locally for review |
 | `gh template explain [field]` | Show descriptions for all `template-metadata.yml` fields |
+
+## Usage
+
+### Creating a repository from a template
+
+`gh template create` accepts two forms for `--manifest`:
+
+**Local file** (default — `./template-metadata.yml`):
+```sh
+gh template create my-new-repo --manifest ./template-metadata.yml
+```
+
+**Repository reference** (`owner/repo`): fetches `template-metadata.yml` from the root of the given repository via the GitHub API and applies it in memory:
+```sh
+gh template create my-new-repo --manifest owner/my-template
+```
+
+When a template maintainer ships a `template-metadata.yml` alongside their template repository, this lets you create a fully-configured repository in one command without any local setup.
+
+### Fetching a manifest for local review
+
+To inspect or customise a template's manifest before creating a repository, fetch it locally first:
+```sh
+gh template manifest fetch owner/my-template
+# review / edit ./template-metadata.yml
+gh template create my-new-repo --manifest ./template-metadata.yml
+```
+
+By default the file is written to `./template-metadata.yml`. Use `--output <path>` to change the destination.
 
 ## Manifest Reference
 
