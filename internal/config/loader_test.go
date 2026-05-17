@@ -56,3 +56,54 @@ func writeManifestFile(t *testing.T, content string) string {
 	}
 	return path
 }
+
+func TestLoadManifest_NewSecurityFields_RoundTrip(t *testing.T) {
+	yaml := `security:
+  dependabot_alerts: true
+  dependabot_security_updates: false
+  secret_scanning: true
+  secret_scanning_push_protection: true
+  private_vulnerability_reporting: true
+  dependency_graph: false
+`
+	path := writeManifestFile(t, yaml)
+
+	m, err := LoadManifest(path)
+	if err != nil {
+		t.Fatalf("LoadManifest() error = %v", err)
+	}
+	if m.Security == nil {
+		t.Fatal("Security is nil, want non-nil")
+	}
+
+	tests := []struct {
+		name string
+		got  *bool
+		want bool
+	}{
+		{"private_vulnerability_reporting", m.Security.PrivateVulnerabilityReporting, true},
+		{"dependency_graph", m.Security.DependencyGraph, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.got == nil {
+				t.Fatalf("%s = nil, want %v", tt.name, tt.want)
+			}
+			if *tt.got != tt.want {
+				t.Errorf("%s = %v, want %v", tt.name, *tt.got, tt.want)
+			}
+		})
+	}
+}
+
+func TestLoadManifest_UnknownSecurityField_Rejected(t *testing.T) {
+	path := writeManifestFile(t, "security:\n  unknown_field: true\n")
+
+	_, err := LoadManifest(path)
+	if err == nil {
+		t.Fatal("LoadManifest() error = nil, want unknown field error")
+	}
+	if !strings.Contains(err.Error(), "unknown_field") {
+		t.Fatalf("LoadManifest() error = %q, want unknown field details", err)
+	}
+}

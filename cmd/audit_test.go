@@ -96,3 +96,102 @@ func TestAuditSettings_Description_ManifestEmpty_NoDrift(t *testing.T) {
 		t.Errorf("DriftCount = %d, want 0", c.Report.DriftCount)
 	}
 }
+
+// --- auditSecurity tests ---
+
+func boolPtr(b bool) *bool { return &b }
+
+func TestAuditSecurity_NilConfig_NoReport(t *testing.T) {
+	c := newAuditCollector(false, "owner/repo", "manifest.yml")
+	auditSecurity(nil, &config.SecuritySettings{}, c)
+
+	if c.Report.DriftCount != 0 {
+		t.Errorf("DriftCount = %d, want 0", c.Report.DriftCount)
+	}
+}
+
+func TestAuditSecurity_AllMatch_NoDrift(t *testing.T) {
+	c := newAuditCollector(false, "owner/repo", "manifest.yml")
+	cfg := &config.SecuritySettings{
+		DependabotAlerts:              boolPtr(true),
+		DependabotSecurityUpdates:     boolPtr(true),
+		SecretScanning:                boolPtr(true),
+		SecretScanningPushProtection:  boolPtr(true),
+		PrivateVulnerabilityReporting: boolPtr(false),
+		DependencyGraph:               boolPtr(true),
+	}
+	live := &config.SecuritySettings{
+		DependabotAlerts:              boolPtr(true),
+		DependabotSecurityUpdates:     boolPtr(true),
+		SecretScanning:                boolPtr(true),
+		SecretScanningPushProtection:  boolPtr(true),
+		PrivateVulnerabilityReporting: boolPtr(false),
+		DependencyGraph:               boolPtr(true),
+	}
+	auditSecurity(cfg, live, c)
+
+	if c.Report.DriftCount != 0 {
+		t.Errorf("DriftCount = %d, want 0", c.Report.DriftCount)
+	}
+}
+
+func TestAuditSecurity_PrivateVulnReporting_Drift(t *testing.T) {
+	c := newAuditCollector(false, "owner/repo", "manifest.yml")
+	cfg := &config.SecuritySettings{
+		PrivateVulnerabilityReporting: boolPtr(true),
+	}
+	live := &config.SecuritySettings{
+		PrivateVulnerabilityReporting: boolPtr(false),
+	}
+	auditSecurity(cfg, live, c)
+
+	if c.Report.DriftCount != 1 {
+		t.Errorf("DriftCount = %d, want 1", c.Report.DriftCount)
+	}
+}
+
+func TestAuditSecurity_PrivateVulnReporting_NilLive_Drift(t *testing.T) {
+	// If live is nil, treat private vulnerability reporting as false.
+	c := newAuditCollector(false, "owner/repo", "manifest.yml")
+	cfg := &config.SecuritySettings{
+		PrivateVulnerabilityReporting: boolPtr(true),
+	}
+	auditSecurity(cfg, nil, c)
+
+	if c.Report.DriftCount != 1 {
+		t.Errorf("DriftCount = %d, want 1", c.Report.DriftCount)
+	}
+}
+
+func TestAuditSecurity_DependencyGraph_Drift(t *testing.T) {
+	c := newAuditCollector(false, "owner/repo", "manifest.yml")
+	cfg := &config.SecuritySettings{
+		DependencyGraph: boolPtr(true),
+	}
+	live := &config.SecuritySettings{
+		DependencyGraph: boolPtr(false),
+	}
+	auditSecurity(cfg, live, c)
+
+	if c.Report.DriftCount != 1 {
+		t.Errorf("DriftCount = %d, want 1", c.Report.DriftCount)
+	}
+}
+
+func TestAuditSecurity_NilCfgFields_NoDrift(t *testing.T) {
+	// Nil config fields means "not configured" — no drift should be recorded
+	// regardless of live state.
+	c := newAuditCollector(false, "owner/repo", "manifest.yml")
+	cfg := &config.SecuritySettings{
+		// PrivateVulnerabilityReporting and DependencyGraph are nil (not configured)
+	}
+	live := &config.SecuritySettings{
+		PrivateVulnerabilityReporting: boolPtr(true),
+		DependencyGraph:               boolPtr(true),
+	}
+	auditSecurity(cfg, live, c)
+
+	if c.Report.DriftCount != 0 {
+		t.Errorf("DriftCount = %d, want 0", c.Report.DriftCount)
+	}
+}

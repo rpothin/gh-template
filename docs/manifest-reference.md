@@ -172,6 +172,23 @@ secrets:
 | `dependabot_security_updates` | bool | `true`, `false` | Enable Dependabot security update pull requests. |
 | `secret_scanning` | bool | `true`, `false` | Enable secret scanning where available. |
 | `secret_scanning_push_protection` | bool | `true`, `false` | Enable push protection where available. |
+| `private_vulnerability_reporting` | bool | `true`, `false` | Enable private vulnerability reporting. Primarily available for public repositories; silently treated as unsupported (not an error) for private repositories or organisations where the feature is unavailable. |
+| `dependency_graph` | bool | `true`, `false` | Enable the dependency graph. Always enabled for public repositories; setting this to `false` on a public repository may have no effect. |
 
 Secret scanning fields are always available for public repositories. Private
 repositories may require GitHub Advanced Security.
+
+### Settings visible in the GitHub UI that cannot be managed via the manifest
+
+The following Advanced Security settings are **not** configurable through the manifest because they require file-based configuration or are controlled by GitHub Actions workflows:
+
+| UI Setting | Reason |
+|---|---|
+| Automatic dependency submission | Requires the `actions/dependency-review-action` or `advanced-security/dependency-review-toolkit` GitHub Actions workflow. |
+| Dependabot rules | Complex rule objects; no simple boolean REST API field. Configure via the Dependabot UI or a `dependabot.yml` file. |
+| Dependabot malware alerts | Shares the same API endpoint as standard Dependabot alerts; there is no separate toggle. |
+| Grouped security updates | Controlled via the `groups:` key in a `dependabot.yml` file. |
+| Dependabot version updates | Requires a `dependabot.yml` configuration file. |
+| Code scanning (CodeQL & other tools) | Requires a GitHub Actions workflow or GitHub's default setup. |
+| Copilot Autofix suggestions | Tied to code scanning; not a standalone repository setting. |
+| Code scanning protection rules | Complex threshold-based settings with no corresponding simple manifest field. |

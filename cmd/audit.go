@@ -194,6 +194,7 @@ Use --format json to get a machine-readable report suitable for CI pipelines:
 			liveVars      []config.EnvironmentVariable
 			liveSecrets   []config.EnvironmentSecret
 			vulnAlerts    bool
+			privVulnRep   bool
 			repoErr       error
 			topicsErr     error
 			envErr        error
@@ -201,10 +202,11 @@ Use --format json to get a machine-readable report suitable for CI pipelines:
 			varsErr       error
 			secretsErr    error
 			vulnAlertsErr error
+			privVulnRepErr error
 			fetchWaiter   sync.WaitGroup
 		)
 
-		fetchWaiter.Add(7)
+		fetchWaiter.Add(8)
 
 		go func() {
 			defer fetchWaiter.Done()
@@ -241,10 +243,15 @@ Use --format json to get a machine-readable report suitable for CI pipelines:
 			vulnAlerts, vulnAlertsErr = ghapi.GetVulnerabilityAlertsEnabled(client, owner, repo)
 		}()
 
+		go func() {
+			defer fetchWaiter.Done()
+			privVulnRep, privVulnRepErr = ghapi.GetPrivateVulnerabilityReportingEnabled(client, owner, repo)
+		}()
+
 		fetchWaiter.Wait()
 
-		if repoErr != nil || topicsErr != nil || envErr != nil || actionsErr != nil || varsErr != nil || secretsErr != nil || vulnAlertsErr != nil {
-			for _, e := range []error{repoErr, topicsErr, envErr, actionsErr, varsErr, secretsErr, vulnAlertsErr} {
+		if repoErr != nil || topicsErr != nil || envErr != nil || actionsErr != nil || varsErr != nil || secretsErr != nil || vulnAlertsErr != nil || privVulnRepErr != nil {
+			for _, e := range []error{repoErr, topicsErr, envErr, actionsErr, varsErr, secretsErr, vulnAlertsErr, privVulnRepErr} {
 				if e != nil {
 					ui.Error("%v", e)
 				}
@@ -262,7 +269,7 @@ Use --format json to get a machine-readable report suitable for CI pipelines:
 		auditTopics(manifest.Topics, liveTopics, c)
 		auditEnvironments(manifest.Environments, liveEnvs, c)
 		auditActions(manifest.Actions, liveActions, c)
-		liveSecurity := ghapi.RepoInfoToSecurity(liveRepo, vulnAlerts)
+		liveSecurity := ghapi.RepoInfoToSecurity(liveRepo, vulnAlerts, privVulnRep)
 		auditSecurity(manifest.Security, liveSecurity, c)
 		auditRepoVarsSecrets(manifest.Variables, manifest.Secrets, liveVars, liveSecrets, c)
 
@@ -629,6 +636,18 @@ func auditSecurity(cfg, live *config.SecuritySettings, c *auditCollector) {
 		livePushProtection = *live.SecretScanningPushProtection
 	}
 	compareBoolSetting("secret_scanning_push_protection", cfg.SecretScanningPushProtection, livePushProtection, c)
+
+	var livePrivVulnRep bool
+	if live != nil && live.PrivateVulnerabilityReporting != nil {
+		livePrivVulnRep = *live.PrivateVulnerabilityReporting
+	}
+	compareBoolSetting("private_vulnerability_reporting", cfg.PrivateVulnerabilityReporting, livePrivVulnRep, c)
+
+	var liveDependencyGraph bool
+	if live != nil && live.DependencyGraph != nil {
+		liveDependencyGraph = *live.DependencyGraph
+	}
+	compareBoolSetting("dependency_graph", cfg.DependencyGraph, liveDependencyGraph, c)
 }
 
 func auditRepoVarsSecrets(cfgVars []config.EnvironmentVariable, cfgSecrets []config.EnvironmentSecret, liveVars []config.EnvironmentVariable, liveSecrets []config.EnvironmentSecret, c *auditCollector) {
