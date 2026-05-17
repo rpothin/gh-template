@@ -49,10 +49,35 @@ var syncCmd = &cobra.Command{
 			mu   sync.Mutex
 		)
 
+		// Fetch live state only for seed-only fields so we don't overwrite
+		// values the repo owner has already customised.
+		var liveRepo *ghapi.RepoInfo
+		var liveTopics []string
+
+		if manifest.Settings.Description != "" {
+			liveRepo, err = ghapi.GetRepository(client, owner, repo)
+			if err != nil {
+				return fmt.Errorf("fetching live repository for seed-only check: %w", err)
+			}
+		}
+		if len(manifest.Topics) > 0 {
+			liveTopics, err = ghapi.GetTopics(client, owner, repo)
+			if err != nil {
+				return fmt.Errorf("fetching live topics for seed-only check: %w", err)
+			}
+		}
+
+		// description is seed-only: clear it from the payload when the live
+		// repo already has a description so we never overwrite owner changes.
+		settingsToApply := manifest.Settings
+		if liveRepo != nil && liveRepo.Description != "" {
+			settingsToApply.Description = ""
+		}
+
 		ui.Header("Settings:")
-		if len(repoUpdatePayload(manifest.Settings)) == 0 {
+		if len(repoUpdatePayload(settingsToApply)) == 0 {
 			ui.Info("No settings configured, skipping.")
-		} else if err := ghapi.UpdateRepository(client, owner, repo, manifest.Settings); err != nil {
+		} else if err := ghapi.UpdateRepository(client, owner, repo, settingsToApply); err != nil {
 			ui.Error("Failed to apply repository settings: %v", err)
 			errs = append(errs, err)
 		} else {
@@ -62,6 +87,8 @@ var syncCmd = &cobra.Command{
 		ui.Header("Topics:")
 		if manifest.Topics == nil {
 			ui.Info("No topics configured, skipping.")
+		} else if len(manifest.Topics) > 0 && len(liveTopics) > 0 {
+			ui.Info("Topics already set, skipping (seed-only).")
 		} else if err := ghapi.SetTopics(client, owner, repo, manifest.Topics); err != nil {
 			ui.Error("Failed to set topics: %v", err)
 			errs = append(errs, err)

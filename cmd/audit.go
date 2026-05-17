@@ -311,11 +311,27 @@ func auditSettings(settings config.RepoSettings, live *ghapi.RepoInfo, c *auditC
 	compareBoolSetting("delete_branch_on_merge", settings.DeleteBranchOnMerge, live.DeleteBranchOnMerge, c)
 	compareBoolSetting("allow_update_branch", settings.AllowUpdateBranch, live.AllowUpdateBranch, c)
 	compareStringSetting("visibility", settings.Visibility, live.Visibility, c)
-	compareStringSetting("description", settings.Description, live.Description, c)
+	// description is seed-only: only flag drift when the manifest specifies
+	// one AND the live repo has none yet. Once the owner has set any
+	// description it is treated as customised and silently skipped.
+	if settings.Description != "" {
+		if live.Description != "" {
+			c.info("description (live value kept, seed-only)")
+		} else {
+			c.drift("description", settings.Description, "")
+		}
+	}
 }
 
 func auditTopics(configTopics, liveTopics []string, c *auditCollector) {
 	c.setSection("Topics")
+
+	// topics is seed-only: once the live repo has any topics the owner has
+	// customised them, so skip the diff entirely.
+	if len(configTopics) > 0 && len(liveTopics) > 0 {
+		c.info("topics (live values kept, seed-only)")
+		return
+	}
 
 	configSet := make(map[string]struct{}, len(configTopics))
 	liveSet := make(map[string]struct{}, len(liveTopics))
