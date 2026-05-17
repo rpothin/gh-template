@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -13,6 +14,7 @@ import (
 
 var searchLimit int
 var searchIncludeArchived bool
+var searchFormat string
 
 var searchCmd = &cobra.Command{
 	Use:   "search [query]",
@@ -30,10 +32,17 @@ Results are sorted by star count (descending). Use --limit to control
 how many results are returned (default: 30, max: 100).
 
 Archived template repositories are excluded by default. Use --include-archived
-to include them.`,
+to include them.
+
+Use --format json to get machine-readable output suitable for piping:
+  gh template search go --format json | ConvertFrom-Json`,
 	Args:         cobra.ArbitraryArgs,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if searchFormat != "table" && searchFormat != "json" {
+			return fmt.Errorf("invalid format %q: must be table or json", searchFormat)
+		}
+		jsonMode := searchFormat == "json"
 		query := strings.Join(args, " ")
 
 		client, err := ghapi.NewRESTClient()
@@ -41,10 +50,12 @@ to include them.`,
 			return err
 		}
 
-		if query == "" {
-			ui.Info("Searching for popular public template repositories...")
-		} else {
-			ui.Info("Searching for template repositories matching %q...", query)
+		if !jsonMode {
+			if query == "" {
+				ui.Info("Searching for popular public template repositories...")
+			} else {
+				ui.Info("Searching for template repositories matching %q...", query)
+			}
 		}
 
 		repos, err := ghapi.SearchTemplateRepos(client, query, searchLimit, searchIncludeArchived, func(msg string) {
@@ -52,6 +63,15 @@ to include them.`,
 		})
 		if err != nil {
 			return err
+		}
+
+		if jsonMode {
+			if repos == nil {
+				repos = []ghapi.TemplateSummary{}
+			}
+			enc := json.NewEncoder(os.Stdout)
+			enc.SetIndent("", "  ")
+			return enc.Encode(repos)
 		}
 
 		if len(repos) == 0 {
@@ -79,5 +99,7 @@ to include them.`,
 func init() {
 	searchCmd.Flags().IntVar(&searchLimit, "limit", 30, "Maximum number of results to return (max 100)")
 	searchCmd.Flags().BoolVar(&searchIncludeArchived, "include-archived", false, "Include archived template repositories")
+	searchCmd.Flags().StringVar(&searchFormat, "format", "table", "Output format: table or json")
 	rootCmd.AddCommand(searchCmd)
 }
+

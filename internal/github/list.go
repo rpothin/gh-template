@@ -12,10 +12,10 @@ import (
 // TemplateSummary is a lightweight representation of a template repository
 // used by the list and search commands.
 type TemplateSummary struct {
-	FullName    string
-	Description string
-	Visibility  string
-	StarCount   int
+	FullName    string `json:"full_name"`
+	Description string `json:"description"`
+	Visibility  string `json:"visibility"`
+	StarCount   int    `json:"star_count,omitempty"`
 }
 
 // visibilityOf returns a display-friendly visibility string, falling back to

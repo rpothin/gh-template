@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"sort"
@@ -13,17 +14,155 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// --- Audit report types ------------------------------------------------------
+
+// AuditDriftItem represents a single field where the live value differs from
+// the manifest value.
+type AuditDriftItem struct {
+	Section string `json:"section"`
+	Field   string `json:"field"`
+	Want    string `json:"want"`
+	Got     string `json:"got"`
+}
+
+// AuditWarning represents a non-drift observation (e.g. a live value not
+// present in the manifest).
+type AuditWarning struct {
+	Section string `json:"section"`
+	Message string `json:"message"`
+}
+
+// AuditReport is the full structured result of an audit run.
+type AuditReport struct {
+	Repo       string           `json:"repo"`
+	Manifest   string           `json:"manifest"`
+	DriftCount int              `json:"drift_count"`
+	Drifts     []AuditDriftItem `json:"drifts"`
+	Warnings   []AuditWarning   `json:"warnings"`
+}
+
+// --- Audit collector ---------------------------------------------------------
+
+// auditCollector accumulates drift items and warnings. In table mode it also
+// prints them to stderr as they are recorded, matching the pre-existing UX.
+type auditCollector struct {
+	tableMode bool
+	section   string
+	Report    AuditReport
+}
+
+func newAuditCollector(tableMode bool, repo, manifest string) *auditCollector {
+	return &auditCollector{
+		tableMode: tableMode,
+		Report: AuditReport{
+			Repo:     repo,
+			Manifest: manifest,
+			Drifts:   []AuditDriftItem{},
+			Warnings: []AuditWarning{},
+		},
+	}
+}
+
+func (c *auditCollector) setSection(name string) {
+	c.section = name
+	if c.tableMode {
+		fmt.Fprintf(os.Stderr, "\n%s:\n", name)
+	}
+}
+
+// enterSubSection sets the current section key (used in JSON) and optionally
+// prints an indented sub-header in table mode.
+func (c *auditCollector) enterSubSection(displayName, sectionKey string) {
+	c.section = sectionKey
+	if c.tableMode {
+		fmt.Fprintf(os.Stderr, "\n  %s:\n", displayName)
+	}
+}
+
+func (c *auditCollector) match(field string, val interface{}) {
+	if c.tableMode {
+		ui.AuditMatch(field, val)
+	}
+}
+
+// successLine prints only in table mode (no JSON data recorded). Used for
+// list-style sections like topics where the value IS the field name.
+func (c *auditCollector) successLine(msg string) {
+	if c.tableMode {
+		ui.Success("%s", msg)
+	}
+}
+
+// driftRaw records a drift item and optionally prints a freeform error line in
+// table mode. Used for sections where the built-in "want X, got Y" format is
+// not appropriate (e.g. topics).
+func (c *auditCollector) driftRaw(field, want, got, tableMsg string) {
+	c.Report.Drifts = append(c.Report.Drifts, AuditDriftItem{
+		Section: c.section,
+		Field:   field,
+		Want:    want,
+		Got:     got,
+	})
+	c.Report.DriftCount++
+	if c.tableMode {
+		ui.Error("%s", tableMsg)
+	}
+}
+
+func (c *auditCollector) drift(field string, want, got interface{}) {
+	c.Report.Drifts = append(c.Report.Drifts, AuditDriftItem{
+		Section: c.section,
+		Field:   field,
+		Want:    fmt.Sprintf("%v", want),
+		Got:     fmt.Sprintf("%v", got),
+	})
+	c.Report.DriftCount++
+	if c.tableMode {
+		ui.AuditDrift(field, want, got)
+	}
+}
+
+func (c *auditCollector) warn(msg string) {
+	c.Report.Warnings = append(c.Report.Warnings, AuditWarning{
+		Section: c.section,
+		Message: msg,
+	})
+	if c.tableMode {
+		ui.Warning("%s", msg)
+	}
+}
+
+func (c *auditCollector) info(msg string) {
+	if c.tableMode {
+		ui.Info("  %s", msg)
+	}
+}
+
+// --- Command -----------------------------------------------------------------
+
 var (
 	auditRepo         string
 	auditManifestPath string
+	auditFormat       string
 )
 
 var auditCmd = &cobra.Command{
-	Use:          "audit --repo <owner/repo> [--manifest <path>]",
-	Short:        "Audit a repository against a template manifest",
+	Use:   "audit --repo <owner/repo> [--manifest <path>]",
+	Short: "Audit a repository against a template manifest",
+	Long: `Compares the live GitHub repository settings against a local manifest file,
+visually detailing any configuration drift.
+
+Use --format json to get a machine-readable report suitable for CI pipelines:
+  gh template audit --repo owner/repo --format json | ConvertFrom-Json`,
 	Args:         cobra.NoArgs,
 	SilenceUsage: true,
 	Run: func(cmd *cobra.Command, args []string) {
+		if auditFormat != "table" && auditFormat != "json" {
+			ui.Error("invalid format %q: must be table or json", auditFormat)
+			os.Exit(1)
+		}
+		tableMode := auditFormat == "table"
+
 		if auditRepo == "" {
 			ui.Error("--repo is required")
 			os.Exit(1)
@@ -48,21 +187,21 @@ var auditCmd = &cobra.Command{
 		}
 
 		var (
-			liveRepo       *ghapi.RepoInfo
-			liveTopics     []string
-			liveEnvs       []config.Environment
-			liveActions    *config.ActionsSettings
-			liveVars       []config.EnvironmentVariable
-			liveSecrets    []config.EnvironmentSecret
-			vulnAlerts     bool
-			repoErr        error
-			topicsErr      error
-			envErr         error
-			actionsErr     error
-			varsErr        error
-			secretsErr     error
-			vulnAlertsErr  error
-			fetchWaiter    sync.WaitGroup
+			liveRepo      *ghapi.RepoInfo
+			liveTopics    []string
+			liveEnvs      []config.Environment
+			liveActions   *config.ActionsSettings
+			liveVars      []config.EnvironmentVariable
+			liveSecrets   []config.EnvironmentSecret
+			vulnAlerts    bool
+			repoErr       error
+			topicsErr     error
+			envErr        error
+			actionsErr    error
+			varsErr       error
+			secretsErr    error
+			vulnAlertsErr error
+			fetchWaiter   sync.WaitGroup
 		)
 
 		fetchWaiter.Add(7)
@@ -105,47 +244,44 @@ var auditCmd = &cobra.Command{
 		fetchWaiter.Wait()
 
 		if repoErr != nil || topicsErr != nil || envErr != nil || actionsErr != nil || varsErr != nil || secretsErr != nil || vulnAlertsErr != nil {
-			if repoErr != nil {
-				ui.Error("%v", repoErr)
-			}
-			if topicsErr != nil {
-				ui.Error("%v", topicsErr)
-			}
-			if envErr != nil {
-				ui.Error("%v", envErr)
-			}
-			if actionsErr != nil {
-				ui.Error("%v", actionsErr)
-			}
-			if varsErr != nil {
-				ui.Error("%v", varsErr)
-			}
-			if secretsErr != nil {
-				ui.Error("%v", secretsErr)
-			}
-			if vulnAlertsErr != nil {
-				ui.Error("%v", vulnAlertsErr)
+			for _, e := range []error{repoErr, topicsErr, envErr, actionsErr, varsErr, secretsErr, vulnAlertsErr} {
+				if e != nil {
+					ui.Error("%v", e)
+				}
 			}
 			os.Exit(1)
 		}
 
-		fmt.Fprintf(os.Stderr, "Auditing %s against %s\n", auditRepo, auditManifestPath)
+		if tableMode {
+			fmt.Fprintf(os.Stderr, "Auditing %s against %s\n", auditRepo, auditManifestPath)
+		}
 
-		driftCount := 0
-		auditSettings(manifest.Settings, liveRepo, &driftCount)
-		auditTopics(manifest.Topics, liveTopics, &driftCount)
-		auditEnvironments(manifest.Environments, liveEnvs, &driftCount)
-		auditActions(manifest.Actions, liveActions, &driftCount)
+		c := newAuditCollector(tableMode, auditRepo, auditManifestPath)
+
+		auditSettings(manifest.Settings, liveRepo, c)
+		auditTopics(manifest.Topics, liveTopics, c)
+		auditEnvironments(manifest.Environments, liveEnvs, c)
+		auditActions(manifest.Actions, liveActions, c)
 		liveSecurity := ghapi.RepoInfoToSecurity(liveRepo, vulnAlerts)
-		auditSecurity(manifest.Security, liveSecurity, &driftCount)
-		auditRepoVarsSecrets(manifest.Variables, manifest.Secrets, liveVars, liveSecrets, &driftCount)
+		auditSecurity(manifest.Security, liveSecurity, c)
+		auditRepoVarsSecrets(manifest.Variables, manifest.Secrets, liveVars, liveSecrets, c)
 
-		if driftCount == 0 {
-			ui.SummaryLine("Summary: ✓ No drift detected. %s matches config.", auditRepo)
+		if !tableMode {
+			enc := json.NewEncoder(os.Stdout)
+			enc.SetIndent("", "  ")
+			_ = enc.Encode(c.Report)
+		}
+
+		if c.Report.DriftCount == 0 {
+			if tableMode {
+				ui.SummaryLine("Summary: ✓ No drift detected. %s matches config.", auditRepo)
+			}
 			return
 		}
 
-		ui.SummaryLine("Summary: %d drift(s) detected in %s", driftCount, auditRepo)
+		if tableMode {
+			ui.SummaryLine("Summary: %d drift(s) detected in %s", c.Report.DriftCount, auditRepo)
+		}
 		os.Exit(1)
 	},
 }
@@ -153,30 +289,33 @@ var auditCmd = &cobra.Command{
 func init() {
 	auditCmd.Flags().StringVarP(&auditRepo, "repo", "r", "", "Repository in owner/repo format")
 	auditCmd.Flags().StringVarP(&auditManifestPath, "manifest", "m", "./template-metadata.yml", "Path to the template manifest file")
+	auditCmd.Flags().StringVar(&auditFormat, "format", "table", "Output format: table or json")
 	rootCmd.AddCommand(auditCmd)
 }
 
-func auditSettings(settings config.RepoSettings, live *ghapi.RepoInfo, driftCount *int) {
-	fmt.Fprintln(os.Stderr, "\nSettings:")
+// --- Audit helper functions --------------------------------------------------
 
-	compareBoolSetting("has_wiki", settings.HasWiki, live.HasWiki, driftCount)
-	compareBoolSetting("has_issues", settings.HasIssues, live.HasIssues, driftCount)
-	compareBoolSetting("has_projects", settings.HasProjects, live.HasProjects, driftCount)
-	compareBoolSetting("has_discussions", settings.HasDiscussions, live.HasDiscussions, driftCount)
-	compareBoolSetting("has_pull_requests", settings.HasPullRequests, live.HasPullRequests, driftCount)
-	compareStringSetting("pull_request_creation_policy", settings.PullRequestCreationPolicy, live.PullRequestCreationPolicy, driftCount)
-	compareBoolSetting("allow_squash_merge", settings.AllowSquashMerge, live.AllowSquashMerge, driftCount)
-	compareBoolSetting("allow_merge_commit", settings.AllowMergeCommit, live.AllowMergeCommit, driftCount)
-	compareBoolSetting("allow_rebase_merge", settings.AllowRebaseMerge, live.AllowRebaseMerge, driftCount)
-	compareBoolSetting("allow_auto_merge", settings.AllowAutoMerge, live.AllowAutoMerge, driftCount)
-	compareBoolSetting("delete_branch_on_merge", settings.DeleteBranchOnMerge, live.DeleteBranchOnMerge, driftCount)
-	compareBoolSetting("allow_update_branch", settings.AllowUpdateBranch, live.AllowUpdateBranch, driftCount)
-	compareStringSetting("visibility", settings.Visibility, live.Visibility, driftCount)
-	compareStringSetting("description", settings.Description, live.Description, driftCount)
+func auditSettings(settings config.RepoSettings, live *ghapi.RepoInfo, c *auditCollector) {
+	c.setSection("Settings")
+
+	compareBoolSetting("has_wiki", settings.HasWiki, live.HasWiki, c)
+	compareBoolSetting("has_issues", settings.HasIssues, live.HasIssues, c)
+	compareBoolSetting("has_projects", settings.HasProjects, live.HasProjects, c)
+	compareBoolSetting("has_discussions", settings.HasDiscussions, live.HasDiscussions, c)
+	compareBoolSetting("has_pull_requests", settings.HasPullRequests, live.HasPullRequests, c)
+	compareStringSetting("pull_request_creation_policy", settings.PullRequestCreationPolicy, live.PullRequestCreationPolicy, c)
+	compareBoolSetting("allow_squash_merge", settings.AllowSquashMerge, live.AllowSquashMerge, c)
+	compareBoolSetting("allow_merge_commit", settings.AllowMergeCommit, live.AllowMergeCommit, c)
+	compareBoolSetting("allow_rebase_merge", settings.AllowRebaseMerge, live.AllowRebaseMerge, c)
+	compareBoolSetting("allow_auto_merge", settings.AllowAutoMerge, live.AllowAutoMerge, c)
+	compareBoolSetting("delete_branch_on_merge", settings.DeleteBranchOnMerge, live.DeleteBranchOnMerge, c)
+	compareBoolSetting("allow_update_branch", settings.AllowUpdateBranch, live.AllowUpdateBranch, c)
+	compareStringSetting("visibility", settings.Visibility, live.Visibility, c)
+	compareStringSetting("description", settings.Description, live.Description, c)
 }
 
-func auditTopics(configTopics, liveTopics []string, driftCount *int) {
-	fmt.Fprintln(os.Stderr, "\nTopics:")
+func auditTopics(configTopics, liveTopics []string, c *auditCollector) {
+	c.setSection("Topics")
 
 	configSet := make(map[string]struct{}, len(configTopics))
 	liveSet := make(map[string]struct{}, len(liveTopics))
@@ -196,12 +335,11 @@ func auditTopics(configTopics, liveTopics []string, driftCount *int) {
 		seenConfig[topic] = struct{}{}
 
 		if _, ok := liveSet[topic]; ok {
-			ui.Success("%s", topic)
+			c.successLine(topic)
 			continue
 		}
 
-		ui.Error("%s (missing from live repo)", topic)
-		*driftCount++
+		c.driftRaw(topic, topic, "(missing from live repo)", topic+" (missing from live repo)")
 	}
 
 	extraTopics := make([]string, 0)
@@ -219,12 +357,12 @@ func auditTopics(configTopics, liveTopics []string, driftCount *int) {
 			continue
 		}
 		seenExtra[topic] = struct{}{}
-		ui.Warning("%s (in live repo, not in config)", topic)
+		c.warn(fmt.Sprintf("%s (in live repo, not in config)", topic))
 	}
 }
 
-func auditEnvironments(configEnvs, liveEnvs []config.Environment, driftCount *int) {
-	fmt.Fprintln(os.Stderr, "\nEnvironments:")
+func auditEnvironments(configEnvs, liveEnvs []config.Environment, c *auditCollector) {
+	c.setSection("Environments")
 
 	liveByName := make(map[string]config.Environment, len(liveEnvs))
 	configByName := make(map[string]struct{}, len(configEnvs))
@@ -237,13 +375,13 @@ func auditEnvironments(configEnvs, liveEnvs []config.Environment, driftCount *in
 
 		liveEnv, ok := liveByName[env.Name]
 		if !ok {
-			ui.Error("%s (missing from live repo)", env.Name)
-			*driftCount++
+			c.driftRaw(env.Name, env.Name, "(missing from live repo)", env.Name+" (missing from live repo)")
 			continue
 		}
 
-		fmt.Fprintf(os.Stderr, "\n  %s:\n", env.Name)
-		auditEnvFields(env, liveEnv, driftCount)
+		c.enterSubSection(env.Name, "environments/"+env.Name)
+		auditEnvFields(env, liveEnv, c)
+		c.setSection("Environments") // restore section after sub-section
 	}
 
 	extraEnvs := make([]config.Environment, 0)
@@ -257,17 +395,16 @@ func auditEnvironments(configEnvs, liveEnvs []config.Environment, driftCount *in
 		return extraEnvs[i].Name < extraEnvs[j].Name
 	})
 	for _, env := range extraEnvs {
-		ui.Warning("%s (in live repo, not in config)", env.Name)
+		c.warn(fmt.Sprintf("%s (in live repo, not in config)", env.Name))
 	}
 }
 
-func auditEnvFields(cfg, live config.Environment, driftCount *int) {
+func auditEnvFields(cfg, live config.Environment, c *auditCollector) {
 	// wait_timer
 	if cfg.WaitTimer != live.WaitTimer {
-		ui.AuditDrift("wait_timer", cfg.WaitTimer, live.WaitTimer)
-		*driftCount++
+		c.drift("wait_timer", cfg.WaitTimer, live.WaitTimer)
 	} else {
-		ui.AuditMatch("wait_timer", cfg.WaitTimer)
+		c.match("wait_timer", cfg.WaitTimer)
 	}
 
 	// prevent_self_review
@@ -277,10 +414,9 @@ func auditEnvFields(cfg, live config.Environment, driftCount *int) {
 			liveVal = *live.PreventSelfReview
 		}
 		if *cfg.PreventSelfReview != liveVal {
-			ui.AuditDrift("prevent_self_review", *cfg.PreventSelfReview, liveVal)
-			*driftCount++
+			c.drift("prevent_self_review", *cfg.PreventSelfReview, liveVal)
 		} else {
-			ui.AuditMatch("prevent_self_review", *cfg.PreventSelfReview)
+			c.match("prevent_self_review", *cfg.PreventSelfReview)
 		}
 	}
 
@@ -292,20 +428,18 @@ func auditEnvFields(cfg, live config.Environment, driftCount *int) {
 		}
 		for _, r := range cfg.Reviewers {
 			if _, ok := liveSet[r]; ok {
-				ui.AuditMatch("reviewer", r)
+				c.match("reviewer", r)
 			} else {
-				ui.AuditDrift("reviewer", r, "(missing)")
-				*driftCount++
+				c.drift("reviewer", r, "(missing)")
 			}
 		}
-		// warn about live reviewers not in the manifest (no drift — manifest owns what it declares)
 		cfgSet := make(map[string]struct{}, len(cfg.Reviewers))
 		for _, r := range cfg.Reviewers {
 			cfgSet[r] = struct{}{}
 		}
 		for _, r := range live.Reviewers {
 			if _, ok := cfgSet[r]; !ok {
-				ui.Warning("reviewer: %s (in live repo, not in config)", r)
+				c.warn(fmt.Sprintf("reviewer: %s (in live repo, not in config)", r))
 			}
 		}
 	}
@@ -317,10 +451,9 @@ func auditEnvFields(cfg, live config.Environment, driftCount *int) {
 			livePolicy = "all"
 		}
 		if cfg.DeploymentBranchPolicy != livePolicy {
-			ui.AuditDrift("deployment_branch_policy", cfg.DeploymentBranchPolicy, livePolicy)
-			*driftCount++
+			c.drift("deployment_branch_policy", cfg.DeploymentBranchPolicy, livePolicy)
 		} else {
-			ui.AuditMatch("deployment_branch_policy", cfg.DeploymentBranchPolicy)
+			c.match("deployment_branch_policy", cfg.DeploymentBranchPolicy)
 		}
 		if cfg.DeploymentBranchPolicy == "custom" {
 			livePatternSet := make(map[string]struct{}, len(live.DeploymentBranchPatterns))
@@ -329,20 +462,18 @@ func auditEnvFields(cfg, live config.Environment, driftCount *int) {
 			}
 			for _, p := range cfg.DeploymentBranchPatterns {
 				if _, ok := livePatternSet[p]; ok {
-					ui.AuditMatch("deployment_branch_pattern", p)
+					c.match("deployment_branch_pattern", p)
 				} else {
-					ui.AuditDrift("deployment_branch_pattern", p, "(missing)")
-					*driftCount++
+					c.drift("deployment_branch_pattern", p, "(missing)")
 				}
 			}
-			// warn about extra live patterns not in config (sync would remove them)
 			cfgPatternSet := make(map[string]struct{}, len(cfg.DeploymentBranchPatterns))
 			for _, p := range cfg.DeploymentBranchPatterns {
 				cfgPatternSet[p] = struct{}{}
 			}
 			for _, p := range live.DeploymentBranchPatterns {
 				if _, ok := cfgPatternSet[p]; !ok {
-					ui.Warning("deployment_branch_pattern: %s (in live repo, not in config; sync would remove it)", p)
+					c.warn(fmt.Sprintf("deployment_branch_pattern: %s (in live repo, not in config; sync would remove it)", p))
 				}
 			}
 		}
@@ -357,14 +488,12 @@ func auditEnvFields(cfg, live config.Environment, driftCount *int) {
 		for _, v := range cfg.Variables {
 			if liveVal, ok := liveVarMap[v.Name]; ok {
 				if v.Value == liveVal {
-					ui.AuditMatch("variable:"+v.Name, v.Value)
+					c.match("variable:"+v.Name, v.Value)
 				} else {
-					ui.AuditDrift("variable:"+v.Name, v.Value, liveVal)
-					*driftCount++
+					c.drift("variable:"+v.Name, v.Value, liveVal)
 				}
 			} else {
-				ui.AuditDrift("variable:"+v.Name, v.Value, "(missing)")
-				*driftCount++
+				c.drift("variable:"+v.Name, v.Value, "(missing)")
 			}
 		}
 	}
@@ -377,52 +506,45 @@ func auditEnvFields(cfg, live config.Environment, driftCount *int) {
 		}
 		for _, s := range cfg.Secrets {
 			if _, ok := liveSecretSet[s.Name]; ok {
-				ui.AuditMatch("secret:"+s.Name, "(exists)")
+				c.match("secret:"+s.Name, "(exists)")
 			} else {
-				ui.AuditDrift("secret:"+s.Name, "(exists)", "(missing)")
-				*driftCount++
+				c.drift("secret:"+s.Name, "(exists)", "(missing)")
 			}
 		}
 	}
 }
 
-func compareBoolSetting(field string, want *bool, got bool, driftCount *int) {
+func compareBoolSetting(field string, want *bool, got bool, c *auditCollector) {
 	if want == nil {
 		return
 	}
-
 	if *want == got {
-		ui.AuditMatch(field, *want)
+		c.match(field, *want)
 		return
 	}
-
-	ui.AuditDrift(field, *want, got)
-	*driftCount++
+	c.drift(field, *want, got)
 }
 
-func compareStringSetting(field, want, got string, driftCount *int) {
+func compareStringSetting(field, want, got string, c *auditCollector) {
 	if want == "" {
 		return
 	}
-
 	if want == got {
-		ui.AuditMatch(field, want)
+		c.match(field, want)
 		return
 	}
-
-	ui.AuditDrift(field, want, got)
-	*driftCount++
+	c.drift(field, want, got)
 }
 
-func auditActions(cfg, live *config.ActionsSettings, driftCount *int) {
-	fmt.Fprintln(os.Stderr, "\nActions:")
+func auditActions(cfg, live *config.ActionsSettings, c *auditCollector) {
+	c.setSection("Actions")
 
 	if cfg == nil {
-		ui.Info("  (no actions permissions configured in manifest)")
+		c.info("(no actions permissions configured in manifest)")
 		return
 	}
 	if live == nil {
-		ui.Warning("  (could not read live actions permissions)")
+		c.warn("(could not read live actions permissions)")
 		return
 	}
 
@@ -432,10 +554,9 @@ func auditActions(cfg, live *config.ActionsSettings, driftCount *int) {
 			liveVal = *live.ShaPinningRequired
 		}
 		if *cfg.ShaPinningRequired != liveVal {
-			ui.AuditDrift("sha_pinning_required", *cfg.ShaPinningRequired, liveVal)
-			*driftCount++
+			c.drift("sha_pinning_required", *cfg.ShaPinningRequired, liveVal)
 		} else {
-			ui.AuditMatch("sha_pinning_required", *cfg.ShaPinningRequired)
+			c.match("sha_pinning_required", *cfg.ShaPinningRequired)
 		}
 	}
 
@@ -445,29 +566,27 @@ func auditActions(cfg, live *config.ActionsSettings, driftCount *int) {
 			liveVal = *live.CanApprovePullRequestReviews
 		}
 		if *cfg.CanApprovePullRequestReviews != liveVal {
-			ui.AuditDrift("can_approve_pull_request_reviews", *cfg.CanApprovePullRequestReviews, liveVal)
-			*driftCount++
+			c.drift("can_approve_pull_request_reviews", *cfg.CanApprovePullRequestReviews, liveVal)
 		} else {
-			ui.AuditMatch("can_approve_pull_request_reviews", *cfg.CanApprovePullRequestReviews)
+			c.match("can_approve_pull_request_reviews", *cfg.CanApprovePullRequestReviews)
 		}
 	}
 
 	if cfg.DefaultWorkflowPermissions != "" {
 		liveVal := live.DefaultWorkflowPermissions
 		if cfg.DefaultWorkflowPermissions != liveVal {
-			ui.AuditDrift("default_workflow_permissions", cfg.DefaultWorkflowPermissions, liveVal)
-			*driftCount++
+			c.drift("default_workflow_permissions", cfg.DefaultWorkflowPermissions, liveVal)
 		} else {
-			ui.AuditMatch("default_workflow_permissions", cfg.DefaultWorkflowPermissions)
+			c.match("default_workflow_permissions", cfg.DefaultWorkflowPermissions)
 		}
 	}
 }
 
-func auditSecurity(cfg, live *config.SecuritySettings, driftCount *int) {
-	fmt.Fprintln(os.Stderr, "\nSecurity:")
+func auditSecurity(cfg, live *config.SecuritySettings, c *auditCollector) {
+	c.setSection("Security")
 
 	if cfg == nil {
-		ui.Info("  (no security settings configured in manifest)")
+		c.info("(no security settings configured in manifest)")
 		return
 	}
 
@@ -475,32 +594,32 @@ func auditSecurity(cfg, live *config.SecuritySettings, driftCount *int) {
 	if live != nil && live.DependabotAlerts != nil {
 		liveAlerts = *live.DependabotAlerts
 	}
-	compareBoolSetting("dependabot_alerts", cfg.DependabotAlerts, liveAlerts, driftCount)
+	compareBoolSetting("dependabot_alerts", cfg.DependabotAlerts, liveAlerts, c)
 
 	var liveUpdates bool
 	if live != nil && live.DependabotSecurityUpdates != nil {
 		liveUpdates = *live.DependabotSecurityUpdates
 	}
-	compareBoolSetting("dependabot_security_updates", cfg.DependabotSecurityUpdates, liveUpdates, driftCount)
+	compareBoolSetting("dependabot_security_updates", cfg.DependabotSecurityUpdates, liveUpdates, c)
 
 	var liveScanning bool
 	if live != nil && live.SecretScanning != nil {
 		liveScanning = *live.SecretScanning
 	}
-	compareBoolSetting("secret_scanning", cfg.SecretScanning, liveScanning, driftCount)
+	compareBoolSetting("secret_scanning", cfg.SecretScanning, liveScanning, c)
 
 	var livePushProtection bool
 	if live != nil && live.SecretScanningPushProtection != nil {
 		livePushProtection = *live.SecretScanningPushProtection
 	}
-	compareBoolSetting("secret_scanning_push_protection", cfg.SecretScanningPushProtection, livePushProtection, driftCount)
+	compareBoolSetting("secret_scanning_push_protection", cfg.SecretScanningPushProtection, livePushProtection, c)
 }
 
-func auditRepoVarsSecrets(cfgVars []config.EnvironmentVariable, cfgSecrets []config.EnvironmentSecret, liveVars []config.EnvironmentVariable, liveSecrets []config.EnvironmentSecret, driftCount *int) {
-	fmt.Fprintln(os.Stderr, "\nRepository Variables:")
+func auditRepoVarsSecrets(cfgVars []config.EnvironmentVariable, cfgSecrets []config.EnvironmentSecret, liveVars []config.EnvironmentVariable, liveSecrets []config.EnvironmentSecret, c *auditCollector) {
+	c.setSection("Repository Variables")
 
 	if len(cfgVars) == 0 {
-		ui.Info("  (no repository variables configured in manifest)")
+		c.info("(no repository variables configured in manifest)")
 	} else {
 		liveVarMap := make(map[string]string, len(liveVars))
 		for _, v := range liveVars {
@@ -509,22 +628,20 @@ func auditRepoVarsSecrets(cfgVars []config.EnvironmentVariable, cfgSecrets []con
 		for _, v := range cfgVars {
 			if liveVal, ok := liveVarMap[v.Name]; ok {
 				if v.Value == liveVal {
-					ui.AuditMatch("variable:"+v.Name, v.Value)
+					c.match("variable:"+v.Name, v.Value)
 				} else {
-					ui.AuditDrift("variable:"+v.Name, v.Value, liveVal)
-					*driftCount++
+					c.drift("variable:"+v.Name, v.Value, liveVal)
 				}
 			} else {
-				ui.AuditDrift("variable:"+v.Name, v.Value, "(missing)")
-				*driftCount++
+				c.drift("variable:"+v.Name, v.Value, "(missing)")
 			}
 		}
 	}
 
-	fmt.Fprintln(os.Stderr, "\nRepository Secrets:")
+	c.setSection("Repository Secrets")
 
 	if len(cfgSecrets) == 0 {
-		ui.Info("  (no repository secrets configured in manifest)")
+		c.info("(no repository secrets configured in manifest)")
 	} else {
 		liveSecretSet := make(map[string]struct{}, len(liveSecrets))
 		for _, s := range liveSecrets {
@@ -532,11 +649,11 @@ func auditRepoVarsSecrets(cfgVars []config.EnvironmentVariable, cfgSecrets []con
 		}
 		for _, s := range cfgSecrets {
 			if _, ok := liveSecretSet[s.Name]; ok {
-				ui.AuditMatch("secret:"+s.Name, "(exists)")
+				c.match("secret:"+s.Name, "(exists)")
 			} else {
-				ui.AuditDrift("secret:"+s.Name, "(exists)", "(missing)")
-				*driftCount++
+				c.drift("secret:"+s.Name, "(exists)", "(missing)")
 			}
 		}
 	}
 }
+

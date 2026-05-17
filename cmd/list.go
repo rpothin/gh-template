@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"text/tabwriter"
@@ -12,10 +13,11 @@ import (
 
 var listIncludeOrgs bool
 var listIncludeArchived bool
+var listFormat string
 
 var listCmd = &cobra.Command{
-	Use:          "list",
-	Short:        "List your template repositories",
+	Use:   "list",
+	Short: "List your template repositories",
 	Long: `Lists template repositories owned by the authenticated user.
 
 These are the repositories marked as templates that appear in GitHub's
@@ -25,23 +27,35 @@ Use --include-orgs to also include template repositories from all
 organisations you belong to.
 
 Archived template repositories are excluded by default. Use --include-archived
-to include them.`,
+to include them.
+
+Use --format json to get machine-readable output suitable for piping:
+  gh template list --format json | ConvertFrom-Json`,
 	Args:         cobra.NoArgs,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if listFormat != "table" && listFormat != "json" {
+			return fmt.Errorf("invalid format %q: must be table or json", listFormat)
+		}
+		jsonMode := listFormat == "json"
+
 		client, err := ghapi.NewRESTClient()
 		if err != nil {
 			return err
 		}
 
-		ui.Info("Fetching your template repositories...")
+		if !jsonMode {
+			ui.Info("Fetching your template repositories...")
+		}
 		repos, err := ghapi.ListOwnedTemplateRepos(client, listIncludeArchived)
 		if err != nil {
 			return err
 		}
 
 		if listIncludeOrgs {
-			ui.Info("Fetching organisation template repositories...")
+			if !jsonMode {
+				ui.Info("Fetching organisation template repositories...")
+			}
 			orgRepos, err := ghapi.ListOrgTemplateRepos(client, listIncludeArchived, func(msg string) {
 				ui.Warning("%s", msg)
 			})
@@ -49,6 +63,15 @@ to include them.`,
 				return err
 			}
 			repos = append(repos, orgRepos...)
+		}
+
+		if jsonMode {
+			if repos == nil {
+				repos = []ghapi.TemplateSummary{}
+			}
+			enc := json.NewEncoder(os.Stdout)
+			enc.SetIndent("", "  ")
+			return enc.Encode(repos)
 		}
 
 		if len(repos) == 0 {
@@ -76,5 +99,7 @@ to include them.`,
 func init() {
 	listCmd.Flags().BoolVar(&listIncludeOrgs, "include-orgs", false, "Also list template repositories from your organisations")
 	listCmd.Flags().BoolVar(&listIncludeArchived, "include-archived", false, "Include archived template repositories")
+	listCmd.Flags().StringVar(&listFormat, "format", "table", "Output format: table or json")
 	rootCmd.AddCommand(listCmd)
 }
+
