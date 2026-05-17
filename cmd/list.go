@@ -18,19 +18,31 @@ var listFormat string
 var listCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List your template repositories",
-	Long: `Lists template repositories owned by the authenticated user.
+	Long: `List template repositories owned by the authenticated user.
 
-These are the repositories marked as templates that appear in GitHub's
-"Choose a template" picker when creating a new repository.
+These are the repositories marked as templates in GitHub's repository settings —
+the ones that appear in GitHub's "Choose a template" picker when creating a new
+repository.
 
-Use --include-orgs to also include template repositories from all
-organisations you belong to.
+Use --include-orgs to also include template repositories from all organisations
+you belong to.
 
 Archived template repositories are excluded by default. Use --include-archived
 to include them.
 
-Use --format json to get machine-readable output suitable for piping:
-  gh template list --format json | ConvertFrom-Json`,
+Use --format json to get machine-readable output suitable for scripting and
+piping into other tools.`,
+	Example: `  # List your template repositories
+  $ gh template list
+
+  # Include templates from your organizations
+  $ gh template list --include-orgs
+
+  # Include archived templates
+  $ gh template list --include-orgs --include-archived
+
+  # List in JSON format for scripting
+  $ gh template list --format json | ConvertFrom-Json`,
 	Args:         cobra.NoArgs,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {

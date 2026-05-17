@@ -40,14 +40,39 @@ func isRepoRef(s string) bool {
 var createCmd = &cobra.Command{
 	Use:   "create <name-or-owner/repo>",
 	Short: "Create a repository from a template",
-	Long: `Create a repository from a template manifest.
+	Long: `Create a repository from a template manifest and apply all configured settings in one step.
 
 The argument can be a plain repository name (uses the authenticated user as
 owner) or an OWNER/REPO reference to create the repository under a specific
 owner (user or organisation).
 
+The manifest can be a local file path or an OWNER/REPO reference. When an
+OWNER/REPO reference is given, template-metadata.yml is fetched from that
+repository via the GitHub API and used directly — no local file needed.
+
 Repository visibility is controlled by the settings.visibility field in the
-manifest. If the field is omitted, the repository is created as public.`,
+manifest. If the field is omitted, the repository is created as public.
+
+After creating the repository from the template, the following settings from
+the manifest are applied in order: repository settings, topics, environments,
+actions permissions, variables, secrets, and security configuration.
+
+To capture a manifest from an existing repository, run:
+  gh template snapshot --repo owner/template-repo
+
+To fetch and inspect a manifest before creating, run:
+  gh template fetch --repo owner/template-repo`,
+	Example: `  # Create a repository using the default manifest path (./template-metadata.yml)
+  $ gh template create my-new-repo
+
+  # Create under a specific organization
+  $ gh template create my-org/my-new-repo
+
+  # Use a manifest from a custom local path
+  $ gh template create my-new-repo --manifest ./configs/template.yml
+
+  # Use a manifest fetched directly from a template repository
+  $ gh template create my-new-repo --manifest owner/my-template`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		arg := args[0]

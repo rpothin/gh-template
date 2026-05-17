@@ -19,23 +19,33 @@ var searchFormat string
 var searchCmd = &cobra.Command{
 	Use:   "search [query]",
 	Short: "Search for public template repositories",
-	Long: `Searches GitHub for public template repositories matching the given query.
+	Long: `Search GitHub for public template repositories matching the given query.
 
 The query is automatically prefixed with "template:true". You can pass any
-GitHub repository search qualifiers as part of the query:
+GitHub repository search qualifiers as additional arguments:
 
-  gh template search go cli
-  gh template search starter language:go
-  gh template search org:github
+  language:go        narrow by programming language
+  org:github         narrow by organisation
+  stars:>100         filter by star count
 
-Results are sorted by star count (descending). Use --limit to control
-how many results are returned (default: 30, max: 100).
+Results are sorted by star count in descending order. Use --limit to control
+how many results are returned (default 30, maximum 100).
 
 Archived template repositories are excluded by default. Use --include-archived
 to include them.
 
-Use --format json to get machine-readable output suitable for piping:
-  gh template search go --format json | ConvertFrom-Json`,
+Use --format json to get machine-readable output suitable for scripting.`,
+	Example: `  # Search for all popular template repositories
+  $ gh template search
+
+  # Search for Go CLI templates
+  $ gh template search go cli
+
+  # Search for templates from a specific organization
+  $ gh template search org:github
+
+  # Return more results in JSON format
+  $ gh template search starter --limit 50 --format json`,
 	Args:         cobra.ArbitraryArgs,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
