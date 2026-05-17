@@ -396,7 +396,7 @@ func getEnvironmentSecretNames(client *gogithub.RESTClient, owner, repo, envName
 	}
 	secrets := make([]config.EnvironmentSecret, len(secretNames))
 	for i, s := range secretNames {
-		secrets[i] = config.EnvironmentSecret{Name: s.Name, Value: config.SecretPlaceholder}
+		secrets[i] = config.EnvironmentSecret{Name: s.Name}
 	}
 	return secrets, nil
 }

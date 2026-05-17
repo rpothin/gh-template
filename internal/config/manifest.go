@@ -77,9 +77,10 @@ type EnvironmentVariable struct {
 }
 
 // EnvironmentSecret represents a named secret in a deployment environment.
-// When captured via snapshot, Value is always SecretPlaceholder.
-// When applied via create/sync, a missing secret is initialized with SecretPlaceholder.
+// The Value field is intentionally omitted from YAML output (secret values
+// cannot be read from GitHub). When applied via create/sync, any missing
+// secret is initialized with SecretPlaceholder.
 type EnvironmentSecret struct {
 	Name  string `yaml:"name"`
-	Value string `yaml:"value"`
+	Value string `yaml:"value,omitempty"`
 }
