@@ -104,6 +104,7 @@ var snapshotCmd = &cobra.Command{
 		}
 
 		manifest := &config.Manifest{
+			Template:     snapshotRepo,
 			Settings:     ghapi.RepoInfoToSettings(repoInfo),
 			Topics:       topics,
 			Environments: envs,

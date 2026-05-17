@@ -1,7 +1,7 @@
 package cmd
 
 import (
-	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"sync"
@@ -14,9 +14,8 @@ import (
 )
 
 var (
-	createTemplate   string
-	createConfigPath string
-	createPrivate    bool
+	createManifestPath string
+	createPrivate      bool
 )
 
 type environmentResult struct {
@@ -32,9 +31,20 @@ var createCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name := args[0]
 
-		templateOwner, templateRepo, err := util.ParseOwnerRepo(createTemplate)
+		// Load manifest first — it is the single required input and must contain
+		// the template field so we can fail fast before making any API calls.
+		manifest, err := config.LoadManifest(createManifestPath)
 		if err != nil {
-			return err
+			return fmt.Errorf("loading manifest %q: %w", createManifestPath, err)
+		}
+
+		if manifest.Template == "" {
+			return fmt.Errorf("manifest %q is missing the required 'template' field (owner/repo format)", createManifestPath)
+		}
+
+		templateOwner, templateRepo, err := util.ParseOwnerRepo(manifest.Template)
+		if err != nil {
+			return fmt.Errorf("invalid template field in manifest: %w", err)
 		}
 
 		client, err := github.NewRESTClient()
@@ -56,16 +66,6 @@ var createCmd = &cobra.Command{
 		}
 
 		ui.Success("Repository created: %s", repo.HTMLURL)
-
-		manifest, err := config.LoadManifest(createConfigPath)
-		if err != nil {
-			if errors.Is(err, os.ErrNotExist) {
-				ui.Warning("Config file not found: %s (skipping config application)", createConfigPath)
-				ui.SummaryLine("Done! Repository available at %s", repo.HTMLURL)
-				return nil
-			}
-			return err
-		}
 
 		ui.Header("Settings:")
 		if err := github.UpdateRepository(client, owner, name, manifest.Settings); err != nil {
@@ -165,9 +165,8 @@ var createCmd = &cobra.Command{
 }
 
 func init() {
-	createCmd.Flags().StringVarP(&createTemplate, "template", "t", "", "Template repository in owner/repo format")
-	createCmd.Flags().StringVarP(&createConfigPath, "config", "c", "./template-metadata.yml", "Path to config file")
+	createCmd.Flags().StringVarP(&createManifestPath, "manifest", "m", "./template-metadata.yml", "Path to the template manifest file")
 	createCmd.Flags().BoolVar(&createPrivate, "private", false, "Create as a private repository")
-	_ = createCmd.MarkFlagRequired("template")
 	rootCmd.AddCommand(createCmd)
 }
+

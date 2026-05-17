@@ -14,8 +14,8 @@ import (
 )
 
 var (
-	syncRepo       string
-	syncConfigPath string
+	syncRepo         string
+	syncManifestPath string
 )
 
 var syncCmd = &cobra.Command{
@@ -27,7 +27,7 @@ var syncCmd = &cobra.Command{
 			return fmt.Errorf("--repo is required")
 		}
 
-		manifest, err := config.LoadManifest(syncConfigPath)
+		manifest, err := config.LoadManifest(syncManifestPath)
 		if err != nil {
 			return err
 		}
@@ -42,7 +42,7 @@ var syncCmd = &cobra.Command{
 			return err
 		}
 
-		ui.Info("Syncing %s/%s from %s...", owner, repo, syncConfigPath)
+		ui.Info("Syncing %s/%s from %s...", owner, repo, syncManifestPath)
 
 		var (
 			errs []error
@@ -158,7 +158,7 @@ var syncCmd = &cobra.Command{
 
 func init() {
 	syncCmd.Flags().StringVarP(&syncRepo, "repo", "r", "", "Repository in owner/repo format")
-	syncCmd.Flags().StringVarP(&syncConfigPath, "config", "c", "./template-metadata.yml", "Path to config file")
+	syncCmd.Flags().StringVarP(&syncManifestPath, "manifest", "m", "./template-metadata.yml", "Path to the template manifest file")
 	_ = syncCmd.MarkFlagRequired("repo")
 	rootCmd.AddCommand(syncCmd)
 }

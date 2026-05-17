@@ -7,6 +7,7 @@ const SecretPlaceholder = "PLACEHOLDER"
 
 // Manifest represents the structure of a template-metadata.yml file.
 type Manifest struct {
+	Template     string               `yaml:"template,omitempty"`
 	Settings     RepoSettings         `yaml:"settings"`
 	Topics       []string             `yaml:"topics,omitempty"`
 	Environments []Environment        `yaml:"environments,omitempty"`

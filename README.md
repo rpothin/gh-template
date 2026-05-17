@@ -5,7 +5,7 @@ A GitHub CLI extension to snapshot existing repositories' configuration, enhance
 
 | Command | Description |
 |---|---|
-| `gh template create <name>` | Create a repository from a template and apply a config |
+| `gh template create <name>` | Create a repository from a template manifest (template repo read from manifest) |
 | `gh template snapshot` | Capture a live repository's settings as a YAML manifest |
 | `gh template audit` | Detect configuration drift between config and live state |
 | `gh template sync` | Reconcile a live repository to match the config |
@@ -14,6 +14,12 @@ A GitHub CLI extension to snapshot existing repositories' configuration, enhance
 ## Manifest Reference
 
 The `template-metadata.yml` file drives `create`, `audit`, and `sync`. Run `gh template explain` for terminal-native docs, or consult the table below.
+
+### Top-level fields
+
+| Field | Type | Description |
+|---|---|---|
+| `template` | string | Source template repository in `owner/repo` format. Auto-populated by `snapshot`. Required by `create`. |
 
 ### `settings`
 
@@ -58,6 +64,7 @@ Each entry in the `environments` list configures one GitHub Actions environment.
 ### Example
 
 ```yaml
+template: rpothin/my-template-repo
 settings:
   has_wiki: false
   has_issues: true

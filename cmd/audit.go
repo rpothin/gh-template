@@ -14,12 +14,12 @@ import (
 )
 
 var (
-	auditRepo       string
-	auditConfigPath string
+	auditRepo         string
+	auditManifestPath string
 )
 
 var auditCmd = &cobra.Command{
-	Use:          "audit --repo <owner/repo> [--config <path>]",
+	Use:          "audit --repo <owner/repo> [--manifest <path>]",
 	Short:        "Audit a repository against a template manifest",
 	Args:         cobra.NoArgs,
 	SilenceUsage: true,
@@ -29,7 +29,7 @@ var auditCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		manifest, err := config.LoadManifest(auditConfigPath)
+		manifest, err := config.LoadManifest(auditManifestPath)
 		if err != nil {
 			ui.Error("%v", err)
 			os.Exit(1)
@@ -129,7 +129,7 @@ var auditCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		fmt.Fprintf(os.Stderr, "Auditing %s against %s\n", auditRepo, auditConfigPath)
+		fmt.Fprintf(os.Stderr, "Auditing %s against %s\n", auditRepo, auditManifestPath)
 
 		driftCount := 0
 		auditSettings(manifest.Settings, liveRepo, &driftCount)
@@ -152,7 +152,7 @@ var auditCmd = &cobra.Command{
 
 func init() {
 	auditCmd.Flags().StringVarP(&auditRepo, "repo", "r", "", "Repository in owner/repo format")
-	auditCmd.Flags().StringVarP(&auditConfigPath, "config", "c", "./template-metadata.yml", "Path to config file")
+	auditCmd.Flags().StringVarP(&auditManifestPath, "manifest", "m", "./template-metadata.yml", "Path to the template manifest file")
 	rootCmd.AddCommand(auditCmd)
 }
 

@@ -1,3 +1,4 @@
+template: rpothin/terraform-powerplatform-module-template
 settings:
     has_wiki: false
     has_issues: true

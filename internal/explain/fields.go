@@ -4,6 +4,7 @@ package explain
 type Section string
 
 const (
+	SectionMeta         Section = "meta"
 	SectionSettings     Section = "settings"
 	SectionEnvironments Section = "environments"
 	SectionTopics       Section = "topics"
@@ -26,6 +27,23 @@ type FieldDef struct {
 
 // Fields is the ordered registry of all manifest fields.
 var Fields = []FieldDef{
+	// ── Meta (top-level) ─────────────────────────────────────────────────
+	{
+		Name:    "template",
+		Section: SectionMeta,
+		Type:    "string",
+		Short:   "Source template repository in owner/repo format",
+		Long: "A top-level field that records which GitHub template repository this\n" +
+			"manifest was originally snapshotted from, and which `gh template create`\n" +
+			"uses to provision new repositories.\n\n" +
+			"Format: owner/repo  (e.g. rpothin/gh-template)\n\n" +
+			"This field is populated automatically by `gh template snapshot`.\n" +
+			"It makes the manifest self-contained: a single `--manifest` flag is\n" +
+			"all that `gh template create` needs — no separate `--template` flag required.\n\n" +
+			"Validation: `gh template create` will fail with a clear error if this\n" +
+			"field is absent or empty.",
+		Example: "template: rpothin/my-template-repo",
+	},
 	// ── Settings ─────────────────────────────────────────────────────────
 	{
 		Name:    "has_wiki",
