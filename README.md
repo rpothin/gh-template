@@ -9,7 +9,7 @@ A GitHub CLI extension to snapshot existing repositories' configuration, enhance
 | `gh template snapshot` | Capture a live repository's settings as a YAML manifest |
 | `gh template audit` | Detect configuration drift between config and live state |
 | `gh template sync` | Reconcile a live repository to match the config |
-| `gh template manifest fetch <owner/repo>` | Fetch a template's recommended manifest locally for review |
+| `gh template fetch` | Fetch a template's recommended manifest locally for review |
 | `gh template explain [field]` | Show descriptions for all `template-metadata.yml` fields |
 
 ## Usage
@@ -34,7 +34,7 @@ When a template maintainer ships a `template-metadata.yml` alongside their templ
 
 To inspect or customise a template's manifest before creating a repository, fetch it locally first:
 ```sh
-gh template manifest fetch owner/my-template
+gh template fetch --repo owner/my-template
 # review / edit ./template-metadata.yml
 gh template create my-new-repo --manifest ./template-metadata.yml
 ```

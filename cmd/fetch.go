@@ -4,23 +4,21 @@ import (
 	"fmt"
 	"os"
 
-	ghapi "github.com/rpothin/gh-template/internal/github"
 	"github.com/rpothin/gh-template/internal/config"
+	ghapi "github.com/rpothin/gh-template/internal/github"
 	"github.com/rpothin/gh-template/internal/ui"
 	"github.com/rpothin/gh-template/internal/util"
 	"github.com/spf13/cobra"
 )
 
-var manifestFetchOutput string
+var (
+	fetchRepo   string
+	fetchOutput string
+)
 
-var manifestCmd = &cobra.Command{
-	Use:   "manifest",
-	Short: "Commands for working with template manifests",
-}
-
-var manifestFetchCmd = &cobra.Command{
-	Use:          "fetch <owner/repo>",
-	Short:        "Fetch a template manifest from a repository",
+var fetchCmd = &cobra.Command{
+	Use:   "fetch",
+	Short: "Fetch a template manifest from a repository",
 	Long: `Fetches template-metadata.yml from the root of the given repository
 and writes it to a local file for inspection and customisation before use.
 
@@ -29,14 +27,13 @@ template-metadata.yml alongside their template repository and you want
 to review or tweak it before running 'gh template create'.
 
 Example workflow:
-  gh template manifest fetch owner/my-template
+  gh template fetch --repo owner/my-template
   # review / edit ./template-metadata.yml
   gh template create my-new-repo --manifest ./template-metadata.yml`,
-	Args:         cobra.ExactArgs(1),
+	Args:         cobra.NoArgs,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		repoRef := args[0]
-		owner, repo, err := util.ParseOwnerRepo(repoRef)
+		owner, repo, err := util.ParseOwnerRepo(fetchRepo)
 		if err != nil {
 			return err
 		}
@@ -46,7 +43,7 @@ Example workflow:
 			return err
 		}
 
-		ui.Info("Fetching manifest from %s...", repoRef)
+		ui.Info("Fetching manifest from %s...", fetchRepo)
 		manifest, err := ghapi.FetchManifestFromRepo(client, owner, repo)
 		if err != nil {
 			return err
@@ -57,7 +54,7 @@ Example workflow:
 			return err
 		}
 
-		outPath := manifestFetchOutput
+		outPath := fetchOutput
 		if outPath == "" {
 			outPath = "template-metadata.yml"
 		}
@@ -72,7 +69,8 @@ Example workflow:
 }
 
 func init() {
-	manifestFetchCmd.Flags().StringVarP(&manifestFetchOutput, "output", "o", "", "File path to write the manifest (default: template-metadata.yml)")
-	manifestCmd.AddCommand(manifestFetchCmd)
-	rootCmd.AddCommand(manifestCmd)
+	fetchCmd.Flags().StringVarP(&fetchRepo, "repo", "r", "", "Repository in owner/repo format")
+	fetchCmd.Flags().StringVarP(&fetchOutput, "output", "o", "", "File path to write the manifest (default: template-metadata.yml)")
+	_ = fetchCmd.MarkFlagRequired("repo")
+	rootCmd.AddCommand(fetchCmd)
 }
