@@ -8,7 +8,6 @@ on:
 
 permissions:
   contents: read
-  checks: write
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -33,13 +32,27 @@ jobs:
 
       - name: Test
         run: |
-          go install gotest.tools/gotestsum@latest
-          gotestsum --junitfile test-results.xml ./...
+          set +e
+          go test -v -json ./... > test-results.json
+          TEST_EXIT=$?
+          set -e
 
-      - name: Test Report
-        uses: dorny/test-reporter@v1
-        if: always()
-        with:
-          name: Go Tests
-          path: test-results.xml
-          reporter: java-junit
+          PASSED=$(jq -s '[.[] | select(.Action=="pass" and .Test!=null)] | length' test-results.json)
+          FAILED=$(jq -s '[.[] | select(.Action=="fail" and .Test!=null)] | length' test-results.json)
+          SKIPPED=$(jq -s '[.[] | select(.Action=="skip" and .Test!=null)] | length' test-results.json)
+
+          {
+            echo "## 🧪 Test Results"
+            echo ""
+            echo "| ✅ Passed | ❌ Failed | ⏭️ Skipped |"
+            echo "|-----------|-----------|------------|"
+            echo "| $PASSED | $FAILED | $SKIPPED |"
+            if [ "$FAILED" -gt 0 ]; then
+              echo ""
+              echo "### Failed Tests"
+              echo ""
+              jq -r 'select(.Action=="fail" and .Test!=null) | "- \`" + .Package + "\` **" + .Test + "**"' test-results.json
+            fi
+          } >> $GITHUB_STEP_SUMMARY
+
+          exit $TEST_EXIT
