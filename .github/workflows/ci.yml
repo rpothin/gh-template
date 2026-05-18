@@ -1,0 +1,58 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Build and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: |
+          set +e
+          go test -v -json ./... > test-results.json
+          TEST_EXIT=$?
+          set -e
+
+          PASSED=$(jq -s '[.[] | select(.Action=="pass" and .Test!=null)] | length' test-results.json)
+          FAILED=$(jq -s '[.[] | select(.Action=="fail" and .Test!=null)] | length' test-results.json)
+          SKIPPED=$(jq -s '[.[] | select(.Action=="skip" and .Test!=null)] | length' test-results.json)
+
+          {
+            echo "## 🧪 Test Results"
+            echo ""
+            echo "| ✅ Passed | ❌ Failed | ⏭️ Skipped |"
+            echo "|-----------|-----------|------------|"
+            echo "| $PASSED | $FAILED | $SKIPPED |"
+            if [ "$FAILED" -gt 0 ]; then
+              echo ""
+              echo "### Failed Tests"
+              echo ""
+              jq -r 'select(.Action=="fail" and .Test!=null) | "- \`" + .Package + "\` **" + .Test + "**"' test-results.json
+            fi
+          } >> $GITHUB_STEP_SUMMARY
+
+          exit $TEST_EXIT
