@@ -8,7 +8,6 @@ on:
 
 permissions:
   contents: read
-  checks: write
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -32,12 +31,4 @@ jobs:
         run: go vet ./...
 
       - name: Test
-        run: go test -v -json ./... > test-results.json
-
-      - name: Test Report
-        uses: dorny/test-reporter@v1
-        if: always()
-        with:
-          name: Go Tests
-          path: test-results.json
-          reporter: go-test
+        run: go test ./...
