@@ -7,14 +7,20 @@ const SecretPlaceholder = "PLACEHOLDER"
 
 // Manifest represents the structure of a template-metadata.yml file.
 type Manifest struct {
-	Template     string               `yaml:"template,omitempty"`
-	Settings     RepoSettings         `yaml:"settings"`
-	Topics       []string             `yaml:"topics,omitempty"`
-	Environments []Environment        `yaml:"environments,omitempty"`
+	Template     string                `yaml:"template,omitempty"`
+	Settings     RepoSettings          `yaml:"settings"`
+	Topics       []string              `yaml:"topics,omitempty"`
+	Environments []Environment         `yaml:"environments,omitempty"`
 	Variables    []EnvironmentVariable `yaml:"variables,omitempty"`
 	Secrets      []EnvironmentSecret   `yaml:"secrets,omitempty"`
-	Actions      *ActionsSettings     `yaml:"actions,omitempty"`
-	Security     *SecuritySettings    `yaml:"security,omitempty"`
+	Actions      *ActionsSettings      `yaml:"actions,omitempty"`
+	Security     *SecuritySettings     `yaml:"security,omitempty"`
+	// CommonFiles lists file or directory paths (relative to the repo root) that
+	// should be copied from the template repository (manifest.Template) to the
+	// target repository during 'gh template sync'. Directories are expanded
+	// recursively. Each path is written to the same relative location in the
+	// target repository.
+	CommonFiles  []string              `yaml:"common_files,omitempty"`
 }
 
 // ActionsSettings maps to GitHub Actions repository permission settings.

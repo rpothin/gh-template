@@ -104,17 +104,28 @@ Flags:
 |---|---|---|
 | `-r, --repo <owner/repo>` | Required | Repository to update. |
 | `-m, --manifest <path>` | `./template-metadata.yml` | Manifest to apply. |
+| `-b, --branch <branch>` | `chore/sync-common-files` | Branch for common-file commits. |
 
 Examples:
 
 ```sh
 gh template sync --repo owner/repo
 gh template sync --repo owner/repo --manifest ./custom-template.yml
+gh template sync --repo owner/repo --branch feat/update-workflows
+gh template sync --repo owner/repo --branch main
 ```
 
 `sync` applies supported settings from the manifest. Existing repository
 variables not present in the manifest are left untouched. Existing secret values
 are not read back; missing secrets are initialized with the placeholder value.
+
+If the manifest includes a `common_files` section, the listed files and
+directories are copied from the template repository (`manifest.template`) to the
+target repository.  By default this is committed to the branch
+`chore/sync-common-files` (created automatically from the repository's default
+branch if it does not exist), so the changes can be reviewed via a pull request.
+Use `--branch` to target a specific branch; use `--branch main` (or the repo's
+actual default branch name) to commit directly.
 
 ## `list`
 

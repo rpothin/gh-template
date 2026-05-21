@@ -61,13 +61,17 @@ security:
   dependabot_security_updates: true
   secret_scanning: true
   secret_scanning_push_protection: true
+common_files:
+  - .github/workflows/
+  - AGENTS.md
+  - docs/skills/
 ```
 
 ## Top-level fields
 
 | Field | Type | Required | Description |
 |---|---|---:|---|
-| `template` | string | Required by local-file `create` | Source template repository in `owner/repo` format. `snapshot` populates it automatically. |
+| `template` | string | Required by local-file `create` | Source template repository in `owner/repo` format. `snapshot` populates it automatically. Required by `sync` when `common_files` is set. |
 | `settings` | object | No | Repository settings. |
 | `topics` | list of strings | No | Repository topics to set. |
 | `environments` | list of objects | No | GitHub Actions deployment environments. |
@@ -75,6 +79,7 @@ security:
 | `secrets` | list of objects | No | Repository-level Actions secrets by name. |
 | `actions` | object | No | GitHub Actions repository permissions. |
 | `security` | object | No | Supported code security and analysis settings. |
+| `common_files` | list of strings | No | Files or directories to copy from the template repository during `sync`. |
 
 When `create --manifest owner/repo` is used, the repository reference is used as
 the template fallback if the remote manifest omits `template`.
@@ -192,3 +197,32 @@ The following Advanced Security settings are **not** configurable through the ma
 | Code scanning (CodeQL & other tools) | Requires a GitHub Actions workflow or GitHub's default setup. |
 | Copilot Autofix suggestions | Tied to code scanning; not a standalone repository setting. |
 | Code scanning protection rules | Complex threshold-based settings with no corresponding simple manifest field. |
+
+## `common_files`
+
+`common_files` is a flat list of file paths or directory paths (relative to the
+repository root) that `sync` copies from the template repository
+(`manifest.template`) to the target repository.
+
+- **File paths** (e.g. `AGENTS.md`, `.github/CODEOWNERS`) are copied as-is.
+- **Directory paths** (e.g. `.github/workflows/`, `docs/skills/`) are expanded
+  recursively — every file in the directory tree is included.
+- Each file is written to the **same relative path** in the target repository.
+- Files whose content has not changed (identical git-blob SHA) are **skipped**
+  to avoid empty commits.
+- The `template` top-level field is required when `common_files` is set.
+
+```yaml
+common_files:
+  - .github/workflows/
+  - AGENTS.md
+  - docs/skills/
+  - .github/copilot-instructions.md
+```
+
+By default, `sync` commits common files to a dedicated branch named
+`chore/sync-common-files` (created from the target repository's default branch
+if it does not already exist), so that the changes can be reviewed via a pull
+request before being merged.  Use the `--branch` flag to target a different
+branch.  Pass the name of the default branch (e.g. `--branch main`) to commit
+directly without creating a review branch.

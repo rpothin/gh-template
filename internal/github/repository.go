@@ -32,6 +32,7 @@ type RepoInfo struct {
 	DeleteBranchOnMerge       bool              `json:"delete_branch_on_merge"`
 	AllowUpdateBranch         bool              `json:"allow_update_branch"`
 	IsTemplate                bool              `json:"is_template"`
+	DefaultBranch             string            `json:"default_branch"`
 	SecurityAndAnalysis       *SecurityAnalysis `json:"security_and_analysis"`
 }
 
@@ -208,3 +209,15 @@ func RepoInfoToSettings(info *RepoInfo) config.RepoSettings {
 }
 
 func boolPtr(b bool) *bool { return &b }
+
+// GetDefaultBranch returns the name of the default branch of a repository.
+func GetDefaultBranch(client *gogithub.RESTClient, owner, repo string) (string, error) {
+	info, err := GetRepository(client, owner, repo)
+	if err != nil {
+		return "", err
+	}
+	if info.DefaultBranch == "" {
+		return "main", nil
+	}
+	return info.DefaultBranch, nil
+}
