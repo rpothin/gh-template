@@ -96,6 +96,43 @@ func TestLoadManifest_NewSecurityFields_RoundTrip(t *testing.T) {
 	}
 }
 
+func TestLoadManifest_CommonFiles_RoundTrip(t *testing.T) {
+	yamlContent := `template: owner/template-repo
+common_files:
+  - .github/workflows/
+  - AGENTS.md
+  - docs/skills/
+`
+	path := writeManifestFile(t, yamlContent)
+
+	m, err := LoadManifest(path)
+	if err != nil {
+		t.Fatalf("LoadManifest() error = %v", err)
+	}
+
+	want := []string{".github/workflows/", "AGENTS.md", "docs/skills/"}
+	if len(m.CommonFiles) != len(want) {
+		t.Fatalf("CommonFiles length = %d, want %d", len(m.CommonFiles), len(want))
+	}
+	for i, w := range want {
+		if m.CommonFiles[i] != w {
+			t.Errorf("CommonFiles[%d] = %q, want %q", i, m.CommonFiles[i], w)
+		}
+	}
+}
+
+func TestLoadManifest_CommonFiles_Empty(t *testing.T) {
+	path := writeManifestFile(t, "template: owner/repo\n")
+
+	m, err := LoadManifest(path)
+	if err != nil {
+		t.Fatalf("LoadManifest() error = %v", err)
+	}
+	if m.CommonFiles != nil {
+		t.Errorf("CommonFiles = %v, want nil", m.CommonFiles)
+	}
+}
+
 func TestLoadManifest_UnknownSecurityField_Rejected(t *testing.T) {
 	path := writeManifestFile(t, "security:\n  unknown_field: true\n")
 

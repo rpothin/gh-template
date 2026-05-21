@@ -749,3 +749,65 @@ func TestAuditSettings_Visibility_Drift(t *testing.T) {
 		t.Errorf("Got = %q, want private", item.Got)
 	}
 }
+
+// --- auditCommonFiles unit tests (no HTTP — tests pure branching logic) ---
+
+func TestAuditCommonFiles_NoConfig_InfoOnly(t *testing.T) {
+	// When common_files is empty, no drift and no warnings are recorded.
+	c := newAuditCollector(false, "owner/repo", "manifest.yml")
+	auditCommonFiles([]string{}, "owner/template", "owner", "repo", nil, c)
+
+	if c.Report.DriftCount != 0 {
+		t.Errorf("DriftCount = %d, want 0 (no common_files means nothing to check)", c.Report.DriftCount)
+	}
+	if len(c.Report.Warnings) != 0 {
+		t.Errorf("Warnings = %d, want 0", len(c.Report.Warnings))
+	}
+}
+
+func TestAuditCommonFiles_MissingTemplate_Warn(t *testing.T) {
+	// When common_files is set but template is empty, a warning must be recorded.
+	c := newAuditCollector(false, "owner/repo", "manifest.yml")
+	auditCommonFiles([]string{"AGENTS.md"}, "", "owner", "repo", nil, c)
+
+	if c.Report.DriftCount != 0 {
+		t.Errorf("DriftCount = %d, want 0 (no template means we can't compare)", c.Report.DriftCount)
+	}
+	if len(c.Report.Warnings) != 1 {
+		t.Fatalf("Warnings = %d, want 1", len(c.Report.Warnings))
+	}
+	if c.Report.Warnings[0].Section != "Common Files" {
+		t.Errorf("Section = %q, want Common Files", c.Report.Warnings[0].Section)
+	}
+}
+
+func TestAuditCommonFiles_InvalidTemplate_Warn(t *testing.T) {
+	// A malformed template slug (missing slash) should produce a warning.
+	c := newAuditCollector(false, "owner/repo", "manifest.yml")
+	auditCommonFiles([]string{"AGENTS.md"}, "notavalidslug", "owner", "repo", nil, c)
+
+	if c.Report.DriftCount != 0 {
+		t.Errorf("DriftCount = %d, want 0", c.Report.DriftCount)
+	}
+	if len(c.Report.Warnings) != 1 {
+		t.Fatalf("Warnings = %d, want 1", len(c.Report.Warnings))
+	}
+}
+
+// --- shortSHA tests ---
+
+func TestShortSHA_LongSHA_Truncated(t *testing.T) {
+	sha := "abc123def456789012345678901234567890"
+	got := shortSHA(sha)
+	if got != "abc123de" {
+		t.Errorf("shortSHA(%q) = %q, want abc123de", sha, got)
+	}
+}
+
+func TestShortSHA_ShortSHA_Unchanged(t *testing.T) {
+	sha := "abc12"
+	got := shortSHA(sha)
+	if got != sha {
+		t.Errorf("shortSHA(%q) = %q, want %q", sha, got, sha)
+	}
+}

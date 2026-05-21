@@ -16,10 +16,11 @@ import (
 var (
 	syncRepo         string
 	syncManifestPath string
+	syncBranch       string
 )
 
 var syncCmd = &cobra.Command{
-	Use:   "sync --repo <owner/repo> [--manifest <path>]",
+	Use:   "sync --repo <owner/repo> [--manifest <path>] [--branch <branch>]",
 	Short: "Sync repository settings from a template manifest",
 	Long: `Sync repository settings from a template manifest into an existing repository.
 
@@ -36,6 +37,14 @@ owner may have customised:
 All other settings (environments, actions permissions, variables, secrets, and
 security) are unconditionally overwritten with the manifest values.
 
+If the manifest includes a 'common_files' section, the listed files and
+directories are copied from the template repository (manifest.template field)
+to the target repository.  By default this is done on a dedicated branch named
+'chore/sync-common-files' (created from the repository's default branch if it
+does not exist), so that the changes can be reviewed via a pull request before
+being merged.  Use --branch to target a different branch; pass the name of the
+default branch (e.g. --branch main) to commit directly.
+
 To check for drift before syncing, run:
   gh template audit --repo owner/repo
 
@@ -45,7 +54,13 @@ To capture updated settings from your template repository, run:
   $ gh template sync --repo owner/my-repo
 
   # Sync using a manifest from a specific path
-  $ gh template sync --repo owner/my-repo --manifest ./configs/template.yml`,
+  $ gh template sync --repo owner/my-repo --manifest ./configs/template.yml
+
+  # Sync common files to a custom branch
+  $ gh template sync --repo owner/my-repo --branch feat/update-workflows
+
+  # Sync common files directly to the default branch (use with care)
+  $ gh template sync --repo owner/my-repo --branch main`,
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if syncRepo == "" {
@@ -207,6 +222,46 @@ To capture updated settings from your template repository, run:
 			ui.Success("Applied security settings")
 		}
 
+		ui.Header("Common Files:")
+		if len(manifest.CommonFiles) == 0 {
+			ui.Info("No common files configured, skipping.")
+		} else if manifest.Template == "" {
+			err := fmt.Errorf("common_files requires the 'template' field to be set in the manifest (owner/repo format)")
+			ui.Error("%v", err)
+			errs = append(errs, err)
+		} else {
+			tmplOwner, tmplRepo, err := util.ParseOwnerRepo(manifest.Template)
+			if err != nil {
+				err = fmt.Errorf("invalid 'template' field in manifest: %w", err)
+				ui.Error("%v", err)
+				errs = append(errs, err)
+			} else {
+				targetBranch := syncBranch
+				if targetBranch == "" {
+					targetBranch = "chore/sync-common-files"
+				}
+
+				if err := ghapi.EnsureBranch(client, owner, repo, targetBranch); err != nil {
+					ui.Error("Failed to ensure branch %s: %v", targetBranch, err)
+					errs = append(errs, err)
+				} else {
+					synced, fileErrs := ghapi.SyncCommonFiles(client, tmplOwner, tmplRepo, owner, repo, manifest.CommonFiles, targetBranch)
+					for _, p := range synced {
+						ui.Success("Synced: %s", p)
+					}
+					for _, e := range fileErrs {
+						ui.Error("Failed to sync file: %v", e)
+						errs = append(errs, e)
+					}
+					if len(fileErrs) == 0 && len(synced) == 0 {
+						ui.Info("All common files already up to date.")
+					} else if len(fileErrs) == 0 {
+						ui.Info("Common files synced to branch '%s' — open a PR to merge the changes.", targetBranch)
+					}
+				}
+			}
+		}
+
 		if len(errs) == 0 {
 			ui.SummaryLine("Sync complete.")
 			return nil
@@ -221,6 +276,7 @@ To capture updated settings from your template repository, run:
 func init() {
 	syncCmd.Flags().StringVarP(&syncRepo, "repo", "r", "", "Repository in owner/repo format")
 	syncCmd.Flags().StringVarP(&syncManifestPath, "manifest", "m", "./template-metadata.yml", "Path to the template manifest file")
+	syncCmd.Flags().StringVarP(&syncBranch, "branch", "b", "", "Branch for common-file commits (default: chore/sync-common-files)")
 	_ = syncCmd.MarkFlagRequired("repo")
 	rootCmd.AddCommand(syncCmd)
 }
