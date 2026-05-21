@@ -90,6 +90,15 @@ gh template audit --repo owner/repo --format json
 In JSON mode, the report includes `repo`, `manifest`, `drift_count`, `drifts`,
 and `warnings`.
 
+Audit checks the following sections: settings, topics, environments, actions
+permissions, variables, secrets, security, and common files.
+
+If the manifest includes a `common_files` section, each listed path is expanded
+from the template repository (`manifest.template`) and its git-blob SHA is
+compared against the same path in the target repository. A missing file or a
+content mismatch is reported as drift. Requires `template` to be set in the
+manifest.
+
 ## `sync`
 
 Sync repository settings from a template manifest.

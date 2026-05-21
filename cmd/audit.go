@@ -7,6 +7,7 @@ import (
 	"sort"
 	"sync"
 
+	gogithub "github.com/cli/go-gh/v2/pkg/api"
 	"github.com/rpothin/gh-template/internal/config"
 	ghapi "github.com/rpothin/gh-template/internal/github"
 	"github.com/rpothin/gh-template/internal/ui"
@@ -154,8 +155,13 @@ highlighting any configuration drift.
 
 Drift is any setting where the live value differs from the manifest value. Each
 section — settings, topics, environments, actions permissions, variables,
-secrets, and security — is checked independently and results are printed as
-they are fetched.
+secrets, security, and common files — is checked independently and results are
+printed as they are fetched.
+
+When common_files is configured in the manifest, each listed path is expanded
+from the template repository and its git-blob SHA is compared against the same
+path in the target repository. A missing file or a SHA mismatch is reported as
+drift.
 
 Use --format json to get a machine-readable report suitable for CI pipelines
 and automated drift detection. A non-zero exit code is returned when drift is
@@ -293,6 +299,7 @@ To apply the manifest settings to a drifted repository, run:
 		liveSecurity := ghapi.RepoInfoToSecurity(liveRepo, vulnAlerts, privVulnRep)
 		auditSecurity(manifest.Security, liveSecurity, c)
 		auditRepoVarsSecrets(manifest.Variables, manifest.Secrets, liveVars, liveSecrets, c)
+		auditCommonFiles(manifest.CommonFiles, manifest.Template, owner, repo, client, c)
 
 		if !tableMode {
 			enc := json.NewEncoder(os.Stdout)
@@ -711,4 +718,55 @@ func auditRepoVarsSecrets(cfgVars []config.EnvironmentVariable, cfgSecrets []con
 			}
 		}
 	}
+}
+
+func auditCommonFiles(paths []string, templateSlug, owner, repo string, client *gogithub.RESTClient, c *auditCollector) {
+	c.setSection("Common Files")
+
+	if len(paths) == 0 {
+		c.info("(no common files configured in manifest)")
+		return
+	}
+
+	if templateSlug == "" {
+		c.warn("common_files requires the 'template' field to be set in the manifest")
+		return
+	}
+
+	tmplOwner, tmplRepo, err := util.ParseOwnerRepo(templateSlug)
+	if err != nil {
+		c.warn(fmt.Sprintf("invalid template %q: %v", templateSlug, err))
+		return
+	}
+
+	for _, rawPath := range paths {
+		infos, err := ghapi.CollectLeafFileInfos(client, tmplOwner, tmplRepo, rawPath)
+		if err != nil {
+			c.warn(fmt.Sprintf("could not read source path %q from %s/%s: %v", rawPath, tmplOwner, tmplRepo, err))
+			continue
+		}
+
+		for _, info := range infos {
+			targetSHA, err := ghapi.GetTargetFileSHA(client, owner, repo, info.Path)
+			if err != nil {
+				c.warn(fmt.Sprintf("%s: could not check target: %v", info.Path, err))
+				continue
+			}
+
+			if targetSHA == "" {
+				c.drift(info.Path, "(exists in template)", "(missing)")
+			} else if targetSHA == info.SHA {
+				c.match(info.Path, "(up to date)")
+			} else {
+				c.drift(info.Path, "template:"+shortSHA(info.SHA), "target:"+shortSHA(targetSHA))
+			}
+		}
+	}
+}
+
+func shortSHA(sha string) string {
+	if len(sha) <= 8 {
+		return sha
+	}
+	return sha[:8]
 }

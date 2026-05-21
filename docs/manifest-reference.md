@@ -79,7 +79,7 @@ common_files:
 | `secrets` | list of objects | No | Repository-level Actions secrets by name. |
 | `actions` | object | No | GitHub Actions repository permissions. |
 | `security` | object | No | Supported code security and analysis settings. |
-| `common_files` | list of strings | No | Files or directories to copy from the template repository during `sync`. |
+| `common_files` | list of strings | No | Files or directories to copy from the template repository during `sync` and to check for drift during `audit`. |
 
 When `create --manifest owner/repo` is used, the repository reference is used as
 the template fallback if the remote manifest omits `template`.
@@ -202,7 +202,8 @@ The following Advanced Security settings are **not** configurable through the ma
 
 `common_files` is a flat list of file paths or directory paths (relative to the
 repository root) that `sync` copies from the template repository
-(`manifest.template`) to the target repository.
+(`manifest.template`) to the target repository, and that `audit` checks for
+drift.
 
 - **File paths** (e.g. `AGENTS.md`, `.github/CODEOWNERS`) are copied as-is.
 - **Directory paths** (e.g. `.github/workflows/`, `docs/skills/`) are expanded
@@ -211,6 +212,10 @@ repository root) that `sync` copies from the template repository
 - Files whose content has not changed (identical git-blob SHA) are **skipped**
   to avoid empty commits.
 - The `template` top-level field is required when `common_files` is set.
+
+`audit` compares each file's git-blob SHA in the template repository against the
+same path in the target repository. A missing file or a SHA mismatch is reported
+as drift in the **Common Files** section.
 
 ```yaml
 common_files:

@@ -120,6 +120,62 @@ func getFileOrDir(client *gogithub.RESTClient, owner, repo, path string) (*fileC
 	return &fc, nil, nil
 }
 
+// ─── Exported types and helpers for external callers (e.g. audit) ─────────────
+
+// FileInfo represents a file entry with its repository-relative path and
+// git-blob SHA. Content is not included, making this suitable for lightweight
+// SHA-based comparisons such as drift detection in audit.
+type FileInfo struct {
+	Path string
+	SHA  string
+}
+
+// CollectLeafFileInfos expands rawPath recursively into all descendant file
+// entries, returning their paths and git-blob SHAs without fetching content.
+// rawPath is normalized and validated before use.
+func CollectLeafFileInfos(client *gogithub.RESTClient, owner, repo, rawPath string) ([]FileInfo, error) {
+	p := normalizePath(rawPath)
+	if err := validateCommonFilePath(p); err != nil {
+		return nil, err
+	}
+	return collectLeafEntries(client, owner, repo, p)
+}
+
+// collectLeafEntries is the internal recursive implementation used by
+// CollectLeafFileInfos. It uses directory listing SHAs so no file content is
+// downloaded.
+func collectLeafEntries(client *gogithub.RESTClient, owner, repo, path string) ([]FileInfo, error) {
+	fc, entries, err := getFileOrDir(client, owner, repo, path)
+	if err != nil {
+		return nil, err
+	}
+	if fc != nil {
+		return []FileInfo{{Path: fc.Path, SHA: fc.SHA}}, nil
+	}
+
+	var result []FileInfo
+	for _, entry := range entries {
+		switch entry.Type {
+		case "file":
+			result = append(result, FileInfo{Path: entry.Path, SHA: entry.SHA})
+		case "dir":
+			sub, err := collectLeafEntries(client, owner, repo, entry.Path)
+			if err != nil {
+				return nil, err
+			}
+			result = append(result, sub...)
+		}
+	}
+	return result, nil
+}
+
+// GetTargetFileSHA returns the current git-blob SHA of a file in the
+// repository, or ("", nil) if the file does not exist (HTTP 404). All other
+// errors are returned unchanged.
+func GetTargetFileSHA(client *gogithub.RESTClient, owner, repo, path string) (string, error) {
+	return getTargetSHA(client, owner, repo, path)
+}
+
 // collectLeafFiles recursively expands path into all descendant file entries.
 // Symlinks and submodule entries are silently skipped.
 func collectLeafFiles(client *gogithub.RESTClient, owner, repo, path string) ([]fileContent, error) {
